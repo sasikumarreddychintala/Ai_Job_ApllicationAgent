@@ -1,0 +1,92 @@
+{
+  "contact_info": {
+    "full_name": "SASI KUMAR REDDY CHINTALA",
+    "email": "sasikumarreddychintala@gmail.com",
+    "phone": "+91-8790039883",
+    "location": "Bengaluru, India",
+    "linkedin": "https://linkedin.com/in/sasi-kumar-reddychintala",
+    "github": null,
+    "portfolio": "https://sasikumarportfolio.vercel.app"
+  },
+  "summary": "AI Engineer & Python Backend Developer with experience architecting autonomous AI agent workflows, RAG pipelines, machine learning models, and high-performance REST APIs using Python, FastAPI, LangChain, PostgreSQL, and Apache Kafka. Skilled in data analysis (Pandas, SQL), prompt engineering, Redis caching, and AWS cloud deployment.",
+  "skills": [
+    "Python",
+    "FastAPI",
+    "Django",
+    "Django REST Framework",
+    "LangChain",
+    "Generative AI",
+    "LLMs",
+    "RAG",
+    "Prompt Engineering",
+    "Vector Databases",
+    "PyTorch",
+    "Scikit-Learn",
+    "Pandas",
+    "NumPy",
+    "Data Analysis",
+    "SQLAlchemy",
+    "SQL",
+    "PostgreSQL",
+    "MySQL",
+    "Redis",
+    "Apache Kafka",
+    "AWS EC2",
+    "AWS S3",
+    "AWS RDS",
+    "Docker",
+    "Linux",
+    "Git",
+    "REST APIs",
+    "JWT",
+    "RBAC",
+    "OAuth 2.0"
+  ],
+  "experience": [
+    {
+      "company": "Levitica Technologies",
+      "position": "Associate Software Developer & AI Engineer",
+      "start_date": "Jun 2025",
+      "end_date": "Present",
+      "highlights": [
+        "Architected AI-powered automation workflows and RESTful microservices using Python, FastAPI, and LangChain, improving system response times by 30%.",
+        "Engineered data analysis and ETL processing pipelines with Pandas, NumPy, and PostgreSQL, automating analytics reporting and query performance by 25%.",
+        "Built asynchronous event-driven streaming with Apache Kafka and secure JWT/RBAC authentication across 5+ modules for 200+ users."
+      ],
+      "verified_skills": [
+        "Python",
+        "FastAPI",
+        "Django",
+        "LangChain",
+        "Generative AI",
+        "Pandas",
+        "SQL",
+        "PostgreSQL",
+        "MySQL",
+        "Apache Kafka",
+        "JWT",
+        "REST APIs"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "institution": "GITAM University, Bangalore",
+      "degree": "Bachelor of Technology in Computer Science",
+      "start_date": "2020",
+      "end_date": "2024"
+    }
+  ],
+  "projects": [
+    {
+      "name": "Elevora ResumeAI (Live: resumeai.elevora.software)",
+      "description": "Architected an AI-powered resume intelligence platform featuring real-time ATS scoring algorithms, dynamic PDF generation, and multi-agent career automation workflows (Live App: https://resumeai.elevora.software).",
+      "technologies": ["Python", "FastAPI", "LangChain", "PostgreSQL", "Apache Kafka", "Docker", "AWS"]
+    }
+  ],
+  "certifications": [],
+  "custom_answers": {
+    "work_authorization": "Authorized to work in India",
+    "notice_period": "Immediate"
+  }
+}

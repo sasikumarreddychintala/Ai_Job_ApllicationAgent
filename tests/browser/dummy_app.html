@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sample Job Application Form</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f4f6f9; }
+        .form-container { max-width: 600px; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; font-weight: bold; margin-bottom: 8px; }
+        input[type="text"], input[type="email"], input[type="tel"], select, textarea {
+            width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;
+        }
+        button { background: #0066cc; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <h2>Job Application — Software Engineer</h2>
+        <form id="job-application-form">
+            <div class="form-group">
+                <label for="full_name">Full Name</label>
+                <input type="text" id="full_name" name="full_name" required>
+            </div>
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+            <div class="form-group">
+                <label for="phone">Phone Number</label>
+                <input type="tel" id="phone" name="phone">
+            </div>
+            <div class="form-group">
+                <label for="location">Location</label>
+                <input type="text" id="location" name="location">
+            </div>
+            <div class="form-group">
+                <label for="linkedin">LinkedIn Profile URL</label>
+                <input type="text" id="linkedin" name="linkedin">
+            </div>
+            <div class="form-group">
+                <label for="resume">Upload Resume (PDF)</label>
+                <input type="file" id="resume" name="resume" accept=".pdf">
+            </div>
+            <div class="form-group">
+                <label for="work_auth">Work Authorization</label>
+                <select id="work_auth" name="work_auth">
+                    <option value="">Select option</option>
+                    <option value="US Citizen">US Citizen</option>
+                    <option value="Authorized">Authorized to work without sponsorship</option>
+                    <option value="Sponsorship Required">Requires visa sponsorship</option>
+                </select>
+            </div>
+            <button type="submit" id="submit-button">Submit Application</button>
+        </form>
+    </div>
+</body>
+</html>

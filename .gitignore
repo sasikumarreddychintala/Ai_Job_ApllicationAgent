@@ -1,0 +1,75 @@
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Local Environment & Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+credentials.json
+token.json
+
+# Application Data & Generated Resumes (Preserve structure via .gitkeep)
+data/applications.db
+data/applications.db-journal
+data/applications.db-wal
+data/applications.db-shm
+data/tailored_resumes/*.pdf
+!data/tailored_resumes/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
+data/master_resume/*.pdf
+!data/master_resume/.gitkeep
+
+# Playwright & Browser Automation Data
+data/logs/browser_context/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# Logs & Scratch Scripts
+*.log
+scratch/
+.system_generated/
+.gemini/
+
+# IDE & OS Specific
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/

@@ -1,0 +1,33 @@
+# Git
+.git/
+.gitignore
+.github/
+
+# Python Cache & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Playwright & Testing
+test-results/
+playwright-report/
+blob-report/
+.pytest_cache/
+
+# Local sensitive files
+.env
+.env.local
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Documentation & Scratch
+scratch/
+*.md
+!README.md
