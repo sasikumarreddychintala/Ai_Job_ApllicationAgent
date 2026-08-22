@@ -1,0 +1,97 @@
+name: 🤖 24/7 AI Job Hunter & Telegram Dispatcher
+
+on:
+  # Automated Schedule: Runs twice daily
+  # 1. Morning Scout: 8:00 AM IST (2:30 AM UTC)
+  # 2. Afternoon Scout: 2:00 PM IST (8:30 AM UTC)
+  schedule:
+    - cron: '30 2 * * *'
+    - cron: '30 8 * * *'
+
+  # Manual Trigger: Allows 1-Click execution anytime from GitHub UI
+  workflow_dispatch:
+    inputs:
+      query:
+        description: 'Job search keyword/title'
+        required: false
+        default: 'Python Developer AI Engineer'
+      location:
+        description: 'Job location'
+        required: false
+        default: 'Bengaluru'
+      time_range:
+        description: 'Recency filter (e.g. 24h, 3d, 7d)'
+        required: false
+        default: '3d'
+
+jobs:
+  hunt_and_apply:
+    name: 🚀 Multi-Board Job Hunt & Resume Tailoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+
+      - name: 🚀 Execute Multi-Board Discovery & Telegram Dispatch
+        env:
+          ENV: production
+          HEADLESS: "true"
+          DRY_RUN: "true"
+          MIN_MATCH_SCORE: 70
+          TELEGRAM_MIN_SCORE: 80
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SEARCH_QUERY: ${{ github.event.inputs.query || 'Python Developer AI Engineer' }}
+          SEARCH_LOCATION: ${{ github.event.inputs.location || 'Bengaluru' }}
+          SEARCH_TIME_RANGE: ${{ github.event.inputs.time_range || '3d' }}
+        run: |
+          python -c "
+          import os
+          from src.jobs.finder import JobFinder
+          from src.agents.match_agent import MatchAgent
+          from src.agents.resume_agent import ResumeTailorAgent
+          from src.agents.jd_agent import JDAgent
+          from src.utils.logger import logger
+
+          q = os.environ.get('SEARCH_QUERY', 'Python Developer AI Engineer')
+          loc = os.environ.get('SEARCH_LOCATION', 'Bengaluru')
+          rec = os.environ.get('SEARCH_TIME_RANGE', '3d')
+
+          logger.info(f'Starting GitHub Actions Multi-Board Hunt: query={q}, location={loc}, recency={rec}')
+          finder = JobFinder.create_multi_source_finder()
+          new_jobs = finder.discover_jobs(query=q, location=loc, time_range=rec)
+          logger.info(f'Discovered {len(new_jobs)} new unique jobs across 28 boards.')
+
+          jd_agent = JDAgent()
+          match_agent = MatchAgent()
+          resume_agent = ResumeTailorAgent()
+
+          scored_count = 0
+          for job in new_jobs:
+              try:
+                  jd_agent.extract_requirements(job.id)
+                  score_data = match_agent.evaluate_match(job.id)
+                  if score_data.overall_score >= 80:
+                      logger.info(f'High match score ({score_data.overall_score}%). Generating tailored PDF resume...')
+                      resume_agent.tailor_resume_for_job(job.id)
+                  scored_count += 1
+              except Exception as e:
+                  logger.warning(f'Error processing Job {job.id}: {e}')
+
+          logger.info(f'GitHub Actions Job Hunt complete! {scored_count} jobs evaluated & delivered to Telegram.')
+          "

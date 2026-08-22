@@ -1,31 +1,50 @@
-version: '3.8'
+version: "3.8"
 
 services:
+  # Master Job Application Agent (Web Dashboard, 28-Platform Scraper, Matcher & Telegram Bot)
   job-agent:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: job_application_agent
+    container_name: job-application-agent
     restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
-      - PORT=8000
+      - ENV=production
       - HEADLESS=true
       - DRY_RUN=true
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=qwen2.5:3b-instruct
+      - MIN_MATCH_SCORE=70
       - TELEGRAM_MIN_SCORE=80
-      - SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USER=${SMTP_USER:-}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - GOOGLE_SHEETS_WEBHOOK_URL=${GOOGLE_SHEETS_WEBHOOK_URL:-}
-      - NOTION_API_KEY=${NOTION_API_KEY:-}
-      - NOTION_DATABASE_ID=${NOTION_DATABASE_ID:-}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    env_file:
+      - .env
     volumes:
+      # Persistent SQLite database, logs, and generated resumes across container restarts
       - ./data:/app/data
-      - ./data/logs:/app/data/logs
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      - ollama
+    networks:
+      - agent-network
+
+  # Local Ollama AI Engine (Runs locally inside Oracle Cloud VM with 0 API costs)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: agent-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - agent-network
+
+volumes:
+  ollama_models:
+    name: agent_ollama_models
+
+networks:
+  agent-network:
+    name: job_agent_network
+    driver: bridge
