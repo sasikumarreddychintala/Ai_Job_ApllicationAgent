@@ -27,6 +27,13 @@ class BrowserManager:
         if self._page:
             return self._page
 
+        # Reset active thread event loop to prevent Playwright Sync inside asyncio conflict
+        import asyncio
+        try:
+            asyncio.set_event_loop(None)
+        except Exception:
+            pass
+
         logger.info(f" Launching Playwright Chromium with Stealth Evasion (headless={self.headless}, slow_mo={self.slow_mo}ms)...")
         self._playwright = sync_playwright().start()
 
