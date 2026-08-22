@@ -1834,8 +1834,8 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
-def run_dashboard_server(host: str = "127.0.0.1", port: int = 8000):
-    """Starts local HTTP dashboard server (threaded for SSE support)."""
+def run_dashboard_server(host: str = "0.0.0.0", port: int = 8000):
+    """Starts local HTTP dashboard server (threaded for SSE support and mobile accessible)."""
     class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
         daemon_threads = True
         def handle_error(self, request, client_address):
@@ -1844,7 +1844,8 @@ def run_dashboard_server(host: str = "127.0.0.1", port: int = 8000):
 
     server = ThreadedHTTPServer((host, port), AgentDashboardHandler)
     logger.info("=" * 60)
-    logger.info(f"[bold green] Local AI Job Agent Dashboard Running at: http://{host}:{port}[/bold green]")
+    logger.info(f"[bold green] Local AI Job Agent Dashboard Running at: http://localhost:{port}[/bold green]")
+    logger.info(f"[bold cyan]📱 Mobile Phone Access (Same Wi-Fi): http://192.168.31.87:{port}[/bold cyan]")
     logger.info("=" * 60)
 
     # Start 2-Way Interactive Telegram Bot Daemon if configured
