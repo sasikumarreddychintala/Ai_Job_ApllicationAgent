@@ -78,20 +78,14 @@ jobs:
           logger.info(f'Discovered {len(new_jobs)} new unique jobs across 28 boards.')
 
           jd_agent = JDAgent()
+          analyzed = jd_agent.analyze_all_pending_jobs(limit=150)
+          logger.info(f'Analyzed {len(analyzed)} pending JDs.')
+
           match_agent = MatchAgent()
-          resume_agent = ResumeTailorAgent()
+          evals = match_agent.evaluate_all_pending_jobs()
+          logger.info(f'Match evaluation complete: {len(evals)} jobs evaluated.')
 
-          scored_count = 0
-          for job in new_jobs:
-              try:
-                  jd_agent.extract_requirements(job.id)
-                  score_data = match_agent.evaluate_match(job.id)
-                  if score_data.overall_score >= 80:
-                      logger.info(f'High match score ({score_data.overall_score}%). Generating tailored PDF resume...')
-                      resume_agent.tailor_resume_for_job(job.id)
-                  scored_count += 1
-              except Exception as e:
-                  logger.warning(f'Error processing Job {job.id}: {e}')
-
-          logger.info(f'GitHub Actions Job Hunt complete! {scored_count} jobs evaluated & delivered to Telegram.')
+          tailor_agent = ResumeTailorAgent()
+          tailored = tailor_agent.tailor_all_pending_jobs()
+          logger.info(f'Resume tailoring complete: {len(tailored)} tailored PDF resumes generated & delivered.')
           "
