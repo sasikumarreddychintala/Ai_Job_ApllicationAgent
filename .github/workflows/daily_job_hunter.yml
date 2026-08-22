@@ -54,6 +54,7 @@ jobs:
           TELEGRAM_MIN_SCORE: 80
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SEARCH_QUERY: ${{ github.event.inputs.query || 'Python Developer AI Engineer' }}

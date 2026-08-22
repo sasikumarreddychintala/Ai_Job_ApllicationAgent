@@ -26,10 +26,12 @@ class Settings(BaseSettings):
     DATABASE_TYPE: str = "sqlite"
     DATABASE_URL: str = ""
 
-    # Ollama Local AI (Lightweight 3B model for fast, cool, quiet performance)
+    # Ollama Local AI & Groq Cloud AI
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5:3b-instruct"
     OLLAMA_TIMEOUT: int = 60
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
     # Playwright Browser Configuration
     HEADLESS: bool = False

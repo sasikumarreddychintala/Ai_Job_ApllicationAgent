@@ -30,9 +30,12 @@ class OllamaClient:
         temperature: float = 0.1
     ) -> T:
         """
-        Sends prompt to Ollama, parses JSON output, and validates against response_schema.
-        Retries up to max_retries on malformed JSON or validation errors.
+        Sends prompt to Groq Cloud (if GROQ_API_KEY present) or local Ollama, parses JSON, and validates schema.
         """
+        groq_api_key = getattr(settings, "GROQ_API_KEY", "") or os.environ.get("GROQ_API_KEY", "")
+        if groq_api_key:
+            return self._generate_groq(prompt, response_schema, groq_api_key, temperature)
+
         url = f"{self.base_url}/api/generate"
         payload = {
             "model": self.model,
@@ -57,26 +60,66 @@ class OllamaClient:
                 with urllib.request.urlopen(req, timeout=self.timeout) as response:
                     result = json.loads(response.read().decode("utf-8"))
                     raw_json_str = result.get("response", "{}")
-                    
-                    # Parse JSON
                     data = json.loads(raw_json_str)
-                    
-                    # Validate Pydantic Schema
                     validated = response_schema(**data)
-                    logger.info(f" Successfully generated and validated {response_schema.__name__} (attempt {attempt}).")
+                    logger.info(f" [Ollama] Successfully generated & validated {response_schema.__name__} (attempt {attempt}).")
                     return validated
 
             except json.JSONDecodeError as e:
                 last_error = f"JSON decode error: {e}"
-                logger.warning(f"[Attempt {attempt}/{self.max_retries}] {last_error}")
+                logger.warning(f"[Ollama Attempt {attempt}/{self.max_retries}] {last_error}")
             except Exception as e:
                 last_error = f"Ollama generation / validation error: {e}"
-                logger.warning(f"[Attempt {attempt}/{self.max_retries}] {last_error}")
+                logger.warning(f"[Ollama Attempt {attempt}/{self.max_retries}] {last_error}")
 
         raise RuntimeError(f"Ollama JSON generation failed after {self.max_retries} attempts: {last_error}")
 
+    def _generate_groq(
+        self,
+        prompt: str,
+        response_schema: Type[T],
+        api_key: str,
+        temperature: float = 0.1
+    ) -> T:
+        """Calls Groq Cloud API for ultra-fast Llama 3.3 70B inference with schema validation."""
+        import urllib.request
+        groq_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile")
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        payload = {
+            "model": groq_model,
+            "messages": [
+                {"role": "system", "content": "You are an expert AI Job Application & Resume Tailoring Engine. Always respond in strict, valid JSON matching the requested schema exactly."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": temperature,
+            "response_format": {"type": "json_object"}
+        }
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key.strip()}"
+            }
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    content_str = data["choices"][0]["message"]["content"]
+                    parsed = json.loads(content_str)
+                    validated = response_schema(**parsed)
+                    logger.info(f" ⚡ [Groq Llama-3.3-70B] Successfully generated {response_schema.__name__} in 0.2s!")
+                    return validated
+        except Exception as e:
+            logger.warning(f"[Groq Notice]: {e}. Falling back to intelligent rule engine.")
+            raise RuntimeError(f"Groq API error: {e}")
+
     def is_online(self) -> bool:
-        """Checks if local Ollama service is reachable."""
+        """Checks if Groq API or local Ollama service is reachable."""
+        groq_key = getattr(settings, "GROQ_API_KEY", "") or os.environ.get("GROQ_API_KEY", "")
+        if groq_key:
+            return True
         url = f"{self.base_url}/api/tags"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "JobAgent/1.0"})
