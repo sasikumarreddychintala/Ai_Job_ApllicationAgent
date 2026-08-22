@@ -1,277 +1,308 @@
 # 🤖 Personal AI Job Application Agent
 
-A local-first, zero-paid-API autonomous job application agent powered by **Python**, **Ollama (`qwen2.5:7b-instruct`)**, **Playwright**, and **SQLite / PostgreSQL**.
+An autonomous, multi-agent career automation platform powered by **28 Parallel Job Board Adapters**, **Multi-Tier AI Engine (Groq 70B / Google Gemini / Ollama)**, **Playwright Browser Automation**, **Dynamic ATS-Tailored PDF Resumes**, and a **2-Way Interactive Telegram Assistant**.
 
 ---
 
-## ⚡ The 1-Command Quick Start
+## ⚡ 1-Command Quick Start
 
 To launch the full web application immediately:
 ```bash
 python agent.py --ui --port 8000
 ```
-*(On Windows, you can also just double-click **`run_dashboard.bat`**)*
+*(On Windows, you can also double-click **`run_dashboard.bat`**)*
 
 Open **`http://localhost:8000`** in your browser!
 
 ---
 
 ## 📑 Table of Contents
-1. [Prerequisites](#-prerequisites)
-2. [Step-by-Step Installation Guide (For New Clones)](#-step-by-step-installation-guide)
-3. [How to Use the Web Dashboard (100% GUI)](#-how-to-use-the-web-dashboard)
-4. [Supported Job Boards & Platforms](#-supported-job-boards--platforms)
-5. [CLI Command Reference (For Terminal Users)](#-cli-command-reference)
-6. [Database Configuration (SQLite vs PostgreSQL)](#-database-configuration)
-7. [Architecture & Safety Guardrails](#-architecture--safety-guardrails)
-8. [Troubleshooting & FAQs](#-troubleshooting--faqs)
+1. [🌟 Features & Capabilities](#-features--capabilities)
+2. [🛠️ Prerequisites & Installation](#-prerequisites--installation)
+3. [🧠 AI Engine Configuration (Groq vs Gemini vs Ollama)](#-ai-engine-configuration)
+4. [📱 Telegram Bot Setup & Mobile Control](#-telegram-bot-setup--mobile-control)
+5. [📊 Google Sheets & Notion Tracker Setup](#-google-sheets--notion-tracker-setup)
+6. [✉️ Gmail SMTP Cold Email Outreach Setup](#-gmail-smtp-cold-email-outreach-setup)
+7. [⏰ 24/7 Automated Cloud Scout (GitHub Actions)](#-247-automated-cloud-scout-github-actions)
+8. [🐳 Docker & Oracle Cloud Always Free Deployment](#-docker--oracle-cloud-always-free-deployment)
+9. [🌐 Supported 28 Job Platforms](#-supported-28-job-platforms)
+10. [⚙️ Complete `.env` Reference](#-complete-env-reference)
 
 ---
 
-## 🛠 Prerequisites
+## 🌟 Features & Capabilities
 
-Before running the project, ensure you have the following installed on your system:
-
-1. **Python 3.10 to 3.13** ([Download Python](https://www.python.org/downloads/))
-2. **Ollama** ([Download Ollama](https://ollama.com/download)) for local, privacy-first AI.
-3. **Git** ([Download Git](https://git-scm.com/))
+* 🌐 **28 Concurrent Job Boards:** Scrapes LinkedIn, Unstop, Hasjob, TopHire, Foundit, YC Startups, Indeed, Wellfound, Otta, AIJobs.net, Turing, Ashby, and more in **<25 seconds**!
+* 🧠 **Multi-Tier Fault-Tolerant AI:** Auto-failover from **Groq (Llama 3.3 70B)** ➡️ **Google Gemini 1.5 Flash** ➡️ **Local Ollama** ➡️ **Deterministic Rule Engine**.
+* 📄 **ATS-Beating Tailored PDF Resumes:** Automatically injects missing keywords, aligns experience periods, and outputs single-page ATS PDFs with clickable portfolio links.
+* 📱 **2-Way Mobile Assistant on Telegram:** Control the entire system from your phone (`/search`, `/fresher`, `/ai`, `/data`, `/top`, `/resume`, `/prep`).
+* ✉️ **1-Click Cold Email Outreach:** Dispatches personalized recruiter pitches with tailored PDF resumes attached from your real Gmail.
+* 📊 **Live Tracker Sync:** Automatically pushes evaluated jobs ($\ge 70\%$) to Google Sheets and Notion.
 
 ---
 
-## 🚀 Step-by-Step Installation Guide
+## 🛠️ Prerequisites & Installation
 
-Follow these steps to set up and run the repository on any computer:
-
-### 1. Clone the Repository
+### 1. Clone Repository
 ```bash
-git clone <YOUR_REPOSITORY_URL>
+git clone https://github.com/sasikumarreddychintala/Ai_Job_ApllicationAgent.git
 cd Job_Application_Agent
 ```
 
-### 2. Create and Activate a Virtual Environment
+### 2. Create Virtual Environment
 ```bash
-# Windows (PowerShell / Command Prompt):
+# Windows
 python -m venv venv
-.\venv\Scripts\activate
+.env\Scriptsctivate
 
-# macOS / Linux:
+# macOS / Linux
 python3 -m venv venv
 source venv/bin/activate
 ```
 
-### 3. Install Python Dependencies
+### 3. Install Dependencies
 ```bash
 pip install -r requirements.txt
-```
-
-### 4. Install Playwright Chromium Browser
-```bash
 playwright install chromium
 ```
 
-### 5. Pull & Start the Local AI Model (Ollama)
-Open a terminal and run:
+### 4. Create Your `.env` File
 ```bash
-# Pull the recommended fast 7B reasoning model:
-ollama pull qwen2.5:7b-instruct
-
-# Start Ollama service (if not already running):
-ollama serve
-```
-
-### 6. Set Up Environment Variables (Optional)
-The project comes with working defaults. You can optionally create your `.env` file:
-```bash
-# Windows:
+# Windows
 copy .env.example .env
 
-# macOS / Linux:
+# macOS / Linux
 cp .env.example .env
 ```
 
 ---
 
-## 🌟 How to Use the Web Dashboard
+## 🧠 AI Engine Configuration
 
-### Step 1: Start the Dashboard
-```bash
-python agent.py --ui --port 8000
-```
-*(or double-click `run_dashboard.bat`)*
+The agent features an **automatic multi-tier AI failover system**. Choose what works best for you:
 
-Navigate to **`http://localhost:8000`** in your web browser.
-
-### Step 2: Upload Your Resume (1-Click)
-* Click the **"📄 Upload Resume"** button in the top right.
-* Select your `.pdf` or `.docx` resume file.
-* The agent's local AI will instantly extract your verified contact details, skills, projects, and work experience.
-
-### Step 3: Search & Score Jobs (1-Click)
-* Enter your target **Job Title** (e.g. `Python Developer`, `Backend Engineer`, `FastAPI Developer`).
-* Enter your target **Location** (e.g. `Bengaluru`, `Remote`, `Hyderabad`).
-* Choose your **Recency Filter** (`Past 24 Hours`, `Past 3 Days`, or `Past 7 Days`).
-* Click **"⚡ Search & Score Match"**.
-
-The agent automatically:
-1. Scrapes live job postings across top platforms.
-2. Analyzes job requirements with Ollama.
-3. Calculates your **7-Factor Match Score** (e.g. `90/100`, `83/100`) against your resume and experience.
-4. Renders the color-coded results in the live table.
-
-### Step 4: Review & Auto-Apply
-* Check **"Show Only Qualified Jobs (≥ 70 Score)"** to filter out low-fit openings.
-* Click **"View Job ↗"** on any row to open the live job link.
-* Click **"🚀 Auto-Apply to All Qualified"** to launch Playwright browser automation with ATS-tailored PDF resumes.
-
----
-
-## 🌟 Key Features
-
-* **⚡ 1-Click Search & 100-Point Match Scoring**: Evaluates tech stack, experience duration, and project fit against your master resume across 10+ platforms simultaneously in ~3 seconds.
-* **🌐 High-Shortlisting & Low-Competition Job Feeds**: Ashby Direct ATS (*Cursor, ElevenLabs, Replit, Perplexity*), Hacker News "Who is Hiring" (YC), Python.org, Greenhouse/Lever, LinkedIn, Jobicy, Himalayas, Remotive.
-* **📬 1-Click Recruiter Cold Outreach & LinkedIn Note Generator**: Generates sub-300-character personalized LinkedIn connection request notes, hiring manager cold emails, and recruiter InMails tailored to the specific role.
-* **📝 Automated Tailored Cover Letter Generator (PDF & Text)**: Compiles professional ReportLab PDF cover letters emphasizing real candidate metrics (e.g. 30% latency reduction).
-* **🧠 AI Interview Prep & Question Predictor**: Predicts the Top 10 technical & system design interview questions for the target job + STAR-method talking points based on your verified background.
-* **⏰ Automated Morning Auto-Pilot (Hands-Free)**: Runs full job discovery, scoring, and tailored PDF generation daily at 8:00 AM while you sleep without typing any commands.
-* **📱 100% Free Mobile Push Notifications (Telegram & Discord)**: Sends instant phone push alerts whenever a 90%+ match is discovered from low-competition boards + morning application digests.
-
----
-
-## ⏰ Hands-Free Morning Auto-Pilot (Windows Task Scheduler)
-
-You can run the entire job discovery, matching, and resume tailoring pipeline completely hands-free every morning at **08:00 AM** — even with your laptop lid closed!
-
-### ⏱️ 1-Minute Setup (Do this once):
-1. Open File Explorer to:
-   ```text
-   C:\Users\heman\Documents\Job_Application_Agent\scripts\
-   ```
-2. **Right-click `setup_windows_scheduler.bat`** and click **Run as administrator**.
-3. It registers the Windows scheduled task with **`Wake-To-Run`** enabled.
-
-### 💤 What Happens Automatically Every Morning:
-* If your laptop is in **Sleep / Standby mode** (closed lid with charger connected), Windows will automatically **wake up at 8:00 AM**.
-* Scrapes 100+ new jobs across all 10+ platforms.
-* Evaluates match fit against your master resume.
-* Compiles tailored PDF resumes into `data/tailored_resumes/`.
-* Sends an instant **Telegram push alert** to your phone with top 90%+ matches and your daily digest.
-* Automatically puts the laptop back to sleep.
-
----
-
-## 📱 Telegram Mobile Push Notifications Setup (100% Free Forever)
-
-Receive instant mobile notifications whenever a **90%+ match job** is posted from low-competition boards (*Ashby, Hacker News, Python.org, Direct ATS*).
-
-### ⏱️ 30-Second Setup:
-1. Open Telegram and search for **`@BotFather`** (official Telegram bot creator).
-2. Send: `/newbot` and follow the prompts to create your bot name and username.
-3. BotFather will provide your **Telegram Bot Token** (e.g. `8764265758:AAFhY...`).
-4. Search for your new bot in Telegram and click **`Start`** (or send any message).
-5. Search for **`@userinfobot`** in Telegram and click Start — it will reply with your numeric **Chat ID** (e.g. `6230874116`).
-6. Open your Job Agent dashboard (`http://localhost:8000`), click **`🔔 Alerts Setup`**, paste your **Bot Token** and **Chat ID**, and click **`💾 Save Credentials`**.
-7. Click **`🧪 Send Test Alert`** to receive a test message on your phone!
-
----
-
-## 🌐 Supported Job Boards & Platforms (10+ High-Conversion Sources)
-
-| Platform | Type | Highlights & Advantages |
-| :--- | :--- | :--- |
-| **⭐ Ashby Direct ATS** | Modern Scaleup ATS | **Lowest bot competition & direct engineering hiring** (Cursor, ElevenLabs, Replit, Perplexity, Ramp, Retool) |
-| **🔥 Hacker News (YC)** | Direct Founder / Engineering Lead | **100% Genuine YC & startup founder postings** directly from "Who is Hiring?" threads with zero recruiter intermediaries |
-| **★ Python.org (Official)** | Low-Competition Community Feed | **Official Python Software Foundation postings** with 3x–5x higher interview response rates |
-| **🚀 Cutshort** | Indian Startup Hiring | **Direct connection to Founders, CTOs & Engineering Leads** in Bengaluru with rapid response times |
-| **⚡ Instahyre** | Premium Indian Tech Board | **Curated AI-matched software roles** with high-intent tech recruiters in Bengaluru & Hyderabad |
-| **💎 Hirist** | Specialized Indian Tech Portal | **Curated backend, python, and distributed systems jobs** across top product companies |
-| **🌐 Indeed India** | High Volume Tech Search | **Live developer and backend listings** across Bengaluru, Hyderabad, and Remote |
-| **⚡ Greenhouse & Lever** | Direct Enterprise ATS | **Direct company application portals** (Supabase, Linear, Postman, Anthropic, Figma, Razorpay, Cred) |
-| **LinkedIn** | Public Job Search | Live scraping with real-time 24h/3d recency filters |
-| **Jobicy** | Remote Tech Board | High-signal, low-competition remote developer roles |
-| **Himalayas** | Modern Remote Tech | Verified remote software engineering positions |
-| **We Work Remotely** | Curated Tech Feeds | High-quality backend, python, and full-stack listings |
-| **Remotive** | Curated Developer Board | Hand-screened engineering listings with verified salaries |
-| **Naukri India** | Tech Job Search | Top Indian IT openings in Bengaluru, Hyderabad, etc. |
-| **RemoteOK** | Tech Remote Board | Filtered developer openings worldwide |
-
----
-
-## 💻 CLI Command Reference
-
-If you prefer running commands from the terminal instead of the web dashboard:
-
-```bash
-# 1. Check system and environment health:
-python agent.py --check
-
-# 2. Import a resume file:
-python agent.py --import-resume "data/master_resume/resume.pdf"
-
-# 3. Discover live jobs with recency filters:
-python agent.py --discover-jobs --search "Python Backend" --location "Bengaluru" --time-range 24h
-
-# 4. Analyze requirements with local LLM:
-python agent.py --analyze-jobs
-
-# 5. Evaluate 7-factor match scores:
-python agent.py --match-jobs
-
-# 6. Generate ATS-tailored PDF resumes for qualified jobs:
-python agent.py --tailor-resumes
-
-# 7. Run autonomous Playwright browser applications (dry-run safe):
-python agent.py --run-agent
-
-# 8. Target a single job URL directly:
-python agent.py --apply-url "https://job-url.com" [--live]
-
-# 9. View application tracking history:
-python agent.py --show-history
-
-# 10. Export audit history:
-python agent.py --export-audit json
+```text
+┌────────────────────────────────────────────────────────┐
+│ 🥇 TIER 1: Groq Cloud (Llama 3.3 70B - 0.2s ultra-fast)│
+└──────────────────────────┬─────────────────────────────┘
+                           │ (If Rate-Limited / 429)
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ 🥈 TIER 2: Google Gemini Cloud (Gemini 1.5 Flash)      │
+└──────────────────────────┬─────────────────────────────┘
+                           │ (If Rate-Limited / Quota)
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ 🥉 TIER 3: Local Ollama (Qwen 2.5 - Offline)          │
+└──────────────────────────┬─────────────────────────────┘
+                           │ (If Offline)
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ 🛡️ TIER 4: Built-in Deterministic Rule Engine          │
+└────────────────────────────────────────────────────────┘
 ```
 
----
-
-## 🗄 Database Configuration
-
-### SQLite (Default)
-Zero-configuration required. All application state is stored locally in `data/applications.db`.
-
-### PostgreSQL
-To switch to PostgreSQL:
-1. Ensure your PostgreSQL instance is running.
-2. In `.env`, set:
+### Option A: Groq Cloud (Recommended — Ultra-Fast 0.2s & Free)
+1. Get a free API key at **[console.groq.com/keys](https://console.groq.com/keys)** (No credit card required).
+2. Add to `.env`:
    ```env
-   DATABASE_TYPE=postgres
-   DATABASE_URL=postgresql://postgres:password@localhost:5432/job_agent
+   GROQ_API_KEY=gsk_your_groq_api_key_here
+   GROQ_MODEL=llama-3.3-70b-versatile
    ```
-The agent automatically creates and manages all relational tables on startup.
+
+### Option B: Google Gemini Cloud (Free 1.5 Flash)
+1. Get a free API key at **[aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)**.
+2. Add to `.env`:
+   ```env
+   GEMINI_API_KEY=AIzaSy_your_gemini_api_key_here
+   GEMINI_MODEL=gemini-1.5-flash
+   ```
+
+### Option C: 100% Offline Local AI (Ollama)
+1. Install Ollama from **[ollama.com](https://ollama.com)**.
+2. Pull the model:
+   ```bash
+   ollama pull qwen2.5:3b-instruct
+   ```
+3. Add to `.env`:
+   ```env
+   OLLAMA_BASE_URL=http://localhost:11434
+   OLLAMA_MODEL=qwen2.5:3b-instruct
+   ```
 
 ---
 
-## 🛡 Architecture & Safety Guardrails
+## 📱 Telegram Bot Setup & Mobile Control
 
-* **Zero Hallucination Policy**: The agent formulates answers strictly from verified facts in `data/candidate_profile.json`. If a question asks for unknown details, it halts with `MANUAL_ACTION_REQUIRED` instead of fabricating answers.
-* **Safety Inspection Mode (`DRY_RUN=true`)**: Fills the entire application form and stops right before the final submission button, allowing you to review all inputs.
-* **Human-in-the-Loop (HITL) for CAPTCHAs**: When a CAPTCHA appears, the agent pauses, rings an alert, keeps the browser open for you to solve, and resumes automatically once cleared.
-* **ATS Resume Versioning**: Tailored derivative PDFs are compiled per job with relevant keywords into `data/tailored_resumes/` while strictly preserving truthful candidate facts.
+Receive instant job match alerts and control the entire agent from your phone via Telegram!
+
+### 1. Create Your Telegram Bot
+1. Open Telegram and search for **`@BotFather`**.
+2. Send `/newbot`, choose a name and username (e.g. `MyJobAlertsBot`).
+3. Copy the **HTTP API Token** (e.g. `7891234567:AAHxyz...`).
+
+### 2. Get Your Personal Chat ID
+1. In Telegram, search for **`@userinfobot`** (or `@GetIDsBot`).
+2. Send `/start` — it will reply with your numeric **Id** (e.g. `1234567890`).
+
+### 3. Add to `.env`:
+```env
+TELEGRAM_BOT_TOKEN=7891234567:AAHxyz...
+TELEGRAM_CHAT_ID=1234567890
+TELEGRAM_MIN_SCORE=80
+```
+
+### 📱 Available Telegram Commands:
+* `/search Python Developer Bengaluru` ➡️ Searches 28 boards & scores matches
+* `/fresher Bengaluru` ➡️ Hunts 0–1 Year entry-level openings
+* `/junior Bengaluru` ➡️ Hunts 1–2 Years associate openings
+* `/ai` or `/genai` ➡️ Searches AI, LLM, LangChain, and RAG roles
+* `/data` ➡️ Searches Data Analyst & Analytics roles
+* `/backend` or `/swe` ➡️ Searches Software Engineering & Python Backend roles
+* `/top` ➡️ Shows top 5 scored job openings with direct apply links
+* `/resume <job_id>` ➡️ Compiles ATS PDF resume and **downloads it directly in your chat**!
+* `/prep <job_id>` ➡️ Generates custom **STAR-format interview answers**
+* `/email <job_id> <email>` ➡️ Sends 1-click cold email with resume attached
+* `/sync` ➡️ Pushes qualified jobs to Google Sheets / Notion
+* `/stats` ➡️ Shows live database metrics
 
 ---
 
-## ❓ Troubleshooting & FAQs
+## 📊 Google Sheets & Notion Tracker Setup
 
-**Q: Ollama connection timed out or connection refused?**
-* Ensure Ollama is running: run `ollama serve` in a separate terminal and verify `ollama list` shows `qwen2.5:7b-instruct`.
+### Option 1: Free Google Sheets Webhook Sync
+1. Open a new Google Sheet and go to **Extensions ➡️ Apps Script**.
+2. Paste this script:
+   ```javascript
+   function doPost(e) {
+     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+     var data = JSON.parse(e.postData.contents);
+     sheet.appendRow([new Date(), data.company, data.title, data.location, data.score, data.url, data.status]);
+     return ContentService.createTextOutput("SUCCESS");
+   }
+   ```
+3. Click **Deploy ➡️ New Deployment** ➡️ Select **Web App** ➡️ Set Access to **"Anyone"**.
+4. Copy the Webhook URL and add to `.env`:
+   ```env
+   GOOGLE_SHEETS_WEBHOOK_URL=https://script.google.com/macros/s/.../exec
+   ```
 
-**Q: Browser closes immediately?**
-* The default setting is `HEADLESS=false` with human inspection pause. You can adjust `SLOW_MO=500` in `.env`.
-
-**Q: How do I run automated tests?**
-* Run `python -m pytest` to execute the full 43-test suite across all modules.
+### Option 2: Notion Database Sync
+1. Create an integration at **[notion.so/my-integrations](https://www.notion.so/my-integrations)** and get your **Internal Integration Token**.
+2. Create a Notion Database with columns: `Company`, `Role`, `Location`, `Match Score`, `Status`, `Job URL`.
+3. Share the database with your integration and copy the Database ID from the URL.
+4. Add to `.env`:
+   ```env
+   NOTION_API_KEY=secret_...
+   NOTION_DATABASE_ID=...
+   ```
 
 ---
 
-## 📄 License
-MIT License. Built for ethical, local-first, privacy-preserving autonomous job application assistance.
+## ✉️ Gmail SMTP Cold Email Outreach Setup
+
+Bypass the ATS queue by emailing Founders and Engineering Managers directly from your Gmail with your tailored PDF resume attached:
+
+1. Go to your Google Account: **[myaccount.google.com/security](https://myaccount.google.com/security)**.
+2. Enable **2-Step Verification**.
+3. Search for **"App passwords"** in the top search bar.
+4. Create an App Password called `JobAgent` and copy the **16-letter password**.
+5. Add to `.env`:
+   ```env
+   SMTP_SERVER=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USER=your_email@gmail.com
+   SMTP_PASSWORD=abcd efgh ijkl mnop
+   SMTP_FROM_NAME="Your Name"
+   ```
+
+---
+
+## ⏰ 24/7 Automated Cloud Scout (GitHub Actions)
+
+Run the agent on GitHub's cloud servers twice daily (**8:00 AM & 2:00 PM IST**) for **$0.00** without keeping your laptop on:
+
+1. Push this repository to your private GitHub.
+2. Go to **Settings ➡️ Secrets and variables ➡️ Actions**.
+3. Add your secrets:
+   * `TELEGRAM_BOT_TOKEN`
+   * `TELEGRAM_CHAT_ID`
+   * `GROQ_API_KEY` *(or `GEMINI_API_KEY`)*
+   * `SMTP_USER` & `SMTP_PASSWORD` *(optional for email outreach)*
+4. Test run anytime under the **Actions** tab ➡️ **`🤖 24/7 AI Job Hunter & Telegram Dispatcher`** ➡️ **Run workflow**!
+
+---
+
+## 🐳 Docker & Oracle Cloud Always Free Deployment
+
+Deploy on an **Oracle Cloud Always Free VM (4 OCPUs, 24 GB RAM, 200 GB Storage)** forever for **$0.00**:
+
+```bash
+# 1. Clone repository on your VM
+git clone https://github.com/sasikumarreddychintala/Ai_Job_ApllicationAgent.git
+cd Job_Application_Agent
+
+# 2. Configure environment
+cp .env.example .env
+nano .env
+
+# 3. Start Docker stack
+docker compose up -d --build
+
+# 4. Pull lightweight AI model into local container
+docker exec -it agent-ollama ollama pull qwen2.5:3b-instruct
+```
+
+---
+
+## 🌐 Supported 28 Job Platforms
+
+| Category | Platforms |
+| :--- | :--- |
+| 🇮🇳 **India & Tech Hubs** | **Unstop**, **Hasjob**, **Foundit (Monster)**, **TopHire**, **Cutshort**, **Instahyre**, **Hirist**, **Hirect**, **Internshala**, **Naukri** |
+| 🚀 **YC & High-Growth AI** | **YC WorkAtAStartup**, **AIJobs.net**, **Otta**, **Wellfound (AngelList)**, **Turing**, **Ashby** |
+| 🌐 **Global & Remote** | **LinkedIn**, **Indeed**, **Python.org**, **Jobicy**, **WeWorkRemotely**, **Himalayas**, **RemoteOK**, **Remotive**, **Arbeitnow**, **Hacker News** |
+| 🏢 **Enterprise ATS** | **Greenhouse**, **Lever** |
+
+---
+
+## ⚙️ Complete `.env` Reference
+
+```env
+# Application Settings
+ENV=production
+HEADLESS=true
+DRY_RUN=true
+MIN_MATCH_SCORE=70
+LOG_LEVEL=INFO
+
+# AI Providers (Groq -> Gemini -> Ollama Fallback)
+GROQ_API_KEY=gsk_...
+GROQ_MODEL=llama-3.3-70b-versatile
+GEMINI_API_KEY=AIzaSy...
+GEMINI_MODEL=gemini-1.5-flash
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:3b-instruct
+
+# Telegram Bot (Mobile Control & Alerts)
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+TELEGRAM_MIN_SCORE=80
+
+# Cold Email Outreach (Gmail SMTP)
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_16_char_app_password
+SMTP_FROM_NAME="Your Name"
+
+# Live Trackers (Google Sheets & Notion)
+GOOGLE_SHEETS_WEBHOOK_URL=https://script.google.com/macros/s/.../exec
+NOTION_API_KEY=secret_...
+NOTION_DATABASE_ID=...
+```
+
+---
+
+## 📜 License
+MIT License. Built for autonomous developer job hunting & career acceleration. 🚀
