@@ -28,7 +28,10 @@ class FormFiller:
         try:
             lbl_locator = self.page.get_by_label(re.compile(field_name, re.IGNORECASE))
             if lbl_locator.count() > 0 and lbl_locator.first.is_visible():
-                lbl_locator.first.fill(value)
+                try:
+                    lbl_locator.first.press_sequentially(value, delay=35)
+                except Exception:
+                    lbl_locator.first.fill(value)
                 logger.info(f" Filled field '{field_name}' via label.")
                 return True
         except Exception:
@@ -39,7 +42,10 @@ class FormFiller:
             try:
                 loc = self.page.locator(sel)
                 if loc.count() > 0 and loc.first.is_visible():
-                    loc.first.fill(value)
+                    try:
+                        loc.first.press_sequentially(value, delay=35)
+                    except Exception:
+                        loc.first.fill(value)
                     logger.info(f" Filled field '{field_name}' via selector '{sel}'.")
                     return True
             except Exception:

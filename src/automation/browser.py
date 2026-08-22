@@ -27,8 +27,10 @@ class BrowserManager:
         if self._page:
             return self._page
 
-        logger.info(f" Launching Playwright Chromium (headless={self.headless}, slow_mo={self.slow_mo}ms)...")
+        logger.info(f" Launching Playwright Chromium with Stealth Evasion (headless={self.headless}, slow_mo={self.slow_mo}ms)...")
         self._playwright = sync_playwright().start()
+
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
         if self.user_data_dir:
             self.user_data_dir.mkdir(parents=True, exist_ok=True)
@@ -36,19 +38,45 @@ class BrowserManager:
                 user_data_dir=str(self.user_data_dir),
                 headless=self.headless,
                 slow_mo=self.slow_mo,
-                viewport={"width": 1280, "height": 800}
+                user_agent=user_agent,
+                viewport={"width": 1280, "height": 800},
+                locale="en-US",
+                timezone_id="Asia/Kolkata",
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-infobars",
+                    "--no-sandbox"
+                ]
             )
             self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
         else:
             self._browser = self._playwright.chromium.launch(
                 headless=self.headless,
-                slow_mo=self.slow_mo
+                slow_mo=self.slow_mo,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-infobars",
+                    "--no-sandbox"
+                ]
             )
-            self._context = self._browser.new_context(viewport={"width": 1280, "height": 800})
+            self._context = self._browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                user_agent=user_agent,
+                locale="en-US",
+                timezone_id="Asia/Kolkata"
+            )
             self._page = self._context.new_page()
 
+        # Stealth Init Scripts: Mask automation fingerprints from Cloudflare / DataDome
+        self._page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            window.chrome = { runtime: {} };
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        """)
+
         self._page.set_default_timeout(settings.BROWSER_TIMEOUT)
-        logger.info(" Playwright browser launched successfully.")
+        logger.info(" Stealth browser context initialized successfully.")
         return self._page
 
     def take_screenshot(self, name: str = "failure_screenshot.png") -> Path:
