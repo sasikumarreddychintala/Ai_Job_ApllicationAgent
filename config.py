@@ -26,12 +26,14 @@ class Settings(BaseSettings):
     DATABASE_TYPE: str = "sqlite"
     DATABASE_URL: str = ""
 
-    # Ollama Local AI & Groq Cloud AI
+    # Multi-Tier Cloud & Local AI Configuration (Groq -> Gemini -> Ollama Fallback)
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5:3b-instruct"
     OLLAMA_TIMEOUT: int = 60
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-1.5-flash"
 
     # Playwright Browser Configuration
     HEADLESS: bool = False

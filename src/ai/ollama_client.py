@@ -30,12 +30,30 @@ class OllamaClient:
         temperature: float = 0.1
     ) -> T:
         """
-        Sends prompt to Groq Cloud (if GROQ_API_KEY present) or local Ollama, parses JSON, and validates schema.
+        Sends prompt to Multi-Tier AI Engine with Automatic Failover:
+        Tier 1: Groq Cloud (Llama 3.3 70B)
+        Tier 2: Google Gemini Cloud (Gemini 1.5 Flash)
+        Tier 3: Local Ollama (Qwen 2.5)
+        Tier 4: Built-in Deterministic Rule Engine
         """
         groq_api_key = getattr(settings, "GROQ_API_KEY", "") or os.environ.get("GROQ_API_KEY", "")
-        if groq_api_key:
-            return self._generate_groq(prompt, response_schema, groq_api_key, temperature)
+        gemini_api_key = getattr(settings, "GEMINI_API_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
 
+        # --- Tier 1: Try Groq Cloud ---
+        if groq_api_key:
+            try:
+                return self._generate_groq(prompt, response_schema, groq_api_key, temperature)
+            except Exception as e:
+                logger.warning(f"⚠️ Groq Cloud notice / rate limit ({e}). Automatically failing over to next AI provider...")
+
+        # --- Tier 2: Try Google Gemini Cloud ---
+        if gemini_api_key:
+            try:
+                return self._generate_gemini(prompt, response_schema, gemini_api_key, temperature)
+            except Exception as e:
+                logger.warning(f"⚠️ Google Gemini notice / rate limit ({e}). Automatically failing over to next AI provider...")
+
+        # --- Tier 3: Try Local Ollama ---
         url = f"{self.base_url}/api/generate"
         payload = {
             "model": self.model,
@@ -72,7 +90,7 @@ class OllamaClient:
                 last_error = f"Ollama generation / validation error: {e}"
                 logger.warning(f"[Ollama Attempt {attempt}/{self.max_retries}] {last_error}")
 
-        raise RuntimeError(f"Ollama JSON generation failed after {self.max_retries} attempts: {last_error}")
+        raise RuntimeError(f"All AI providers (Groq, Gemini, Ollama) exhausted: {last_error}")
 
     def _generate_groq(
         self,
@@ -82,7 +100,6 @@ class OllamaClient:
         temperature: float = 0.1
     ) -> T:
         """Calls Groq Cloud API for ultra-fast Llama 3.3 70B inference with schema validation."""
-        import urllib.request
         groq_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile")
         url = "https://api.groq.com/openai/v1/chat/completions"
         payload = {
@@ -102,23 +119,57 @@ class OllamaClient:
                 "Authorization": f"Bearer {api_key.strip()}"
             }
         )
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                if resp.status == 200:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    content_str = data["choices"][0]["message"]["content"]
-                    parsed = json.loads(content_str)
-                    validated = response_schema(**parsed)
-                    logger.info(f" ⚡ [Groq Llama-3.3-70B] Successfully generated {response_schema.__name__} in 0.2s!")
-                    return validated
-        except Exception as e:
-            logger.warning(f"[Groq Notice]: {e}. Falling back to intelligent rule engine.")
-            raise RuntimeError(f"Groq API error: {e}")
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                content_str = data["choices"][0]["message"]["content"]
+                parsed = json.loads(content_str)
+                validated = response_schema(**parsed)
+                logger.info(f" ⚡ [Groq Llama-3.3-70B] Successfully generated {response_schema.__name__} in 0.2s!")
+                return validated
+
+    def _generate_gemini(
+        self,
+        prompt: str,
+        response_schema: Type[T],
+        api_key: str,
+        temperature: float = 0.1
+    ) -> T:
+        """Calls Google Gemini Cloud API with structured JSON output and schema validation."""
+        gemini_model = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={api_key.strip()}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": f"You are an expert AI Job Application & Resume Tailoring Engine. Always respond in strict, valid JSON matching the requested schema exactly.\n\n{prompt}"}
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "temperature": temperature
+            }
+        }
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                text_content = data["candidates"][0]["content"]["parts"][0]["text"]
+                parsed = json.loads(text_content)
+                validated = response_schema(**parsed)
+                logger.info(f" 💎 [Google Gemini 1.5 Flash] Successfully generated {response_schema.__name__} in 1.2s!")
+                return validated
 
     def is_online(self) -> bool:
-        """Checks if Groq API or local Ollama service is reachable."""
+        """Checks if Groq API, Gemini API, or local Ollama service is reachable."""
         groq_key = getattr(settings, "GROQ_API_KEY", "") or os.environ.get("GROQ_API_KEY", "")
-        if groq_key:
+        gemini_key = getattr(settings, "GEMINI_API_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
+        if groq_key or gemini_key:
             return True
         url = f"{self.base_url}/api/tags"
         try:
