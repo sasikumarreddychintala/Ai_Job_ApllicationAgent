@@ -285,10 +285,11 @@ class TelegramInteractiveBot:
                     src_label = "Ashby" if "ashby" in src.lower() else "Python.org" if "python_org" in src.lower() else "HN" if "hacker" in src.lower() else src
                     clean_url = url if (url and url.startswith("http") and "hirect.in" not in url) else f"https://www.google.com/search?q={urllib.parse.quote(f'{tit} {comp} jobs {loc}')}"
                     msg_lines.append(
-                        f"🔹 *[{jid}] {tit}* at *{comp}*\n"
+                        f"🔹 *[Job ID: #{jid}] {tit}* at *{comp}*\n"
                         f"   🎯 Match: `{score}%` | 🌐 Source: `{src_label}` | 📍 `{loc}`\n"
-                        f"   🔗 [View Job Posting]({clean_url})\n"
-                        f"   👉 Get Resume: `/resume {jid}` | Prep: `/prep {jid}`\n"
+                        f"   🔗 [Open Job Application Link]({clean_url})\n"
+                        f"   📄 *Resume:* `/resume {jid}` | 🧠 *Interview Prep:* `/prep {jid}`\n"
+                        f"   👤 *Hiring Leads:* `/hiring {jid}` | ✉️ *Cold Email:* `/email {jid} hr@company.com`\n"
                     )
                 self.send_message("\n".join(msg_lines), target_chat_id=sender_id)
             finally:
