@@ -25,12 +25,21 @@ def create_resume_version_filename(job_id: int, company: str, title: str) -> str
 def generate_pdf_resume(
     candidate: CandidateProfile,
     tailored_output: TailoredResumeOutput,
-    output_path: Path
+    output_path: Path,
+    theme: Optional[str] = None
 ) -> Path:
     """
     Compiles a clean, professional, ATS-optimized PDF resume using ReportLab.
-    Ensures precise typography, automated flow, and zero text overlap.
+    Supports 'tech' (Modern Sans-Serif) and 'corporate' (Classic Serif) themes.
     """
+    from config import settings
+    active_theme = (theme or getattr(settings, "RESUME_THEME", "tech")).lower()
+    is_corporate = "corp" in active_theme or "classic" in active_theme
+
+    font_bold = 'Times-Bold' if is_corporate else 'Helvetica-Bold'
+    font_regular = 'Times-Roman' if is_corporate else 'Helvetica'
+    primary_color = colors.HexColor('#1e293b') if is_corporate else colors.HexColor('#0f172a')
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc = SimpleDocTemplate(
         str(output_path),
@@ -46,15 +55,15 @@ def generate_pdf_resume(
     name_style = ParagraphStyle(
         'ResumeName',
         parent=styles['Normal'],
-        fontName='Helvetica-Bold',
+        fontName=font_bold,
         fontSize=18,
         leading=22,
-        textColor=colors.HexColor('#0f172a')
+        textColor=primary_color
     )
     contact_style = ParagraphStyle(
         'ResumeContact',
         parent=styles['Normal'],
-        fontName='Helvetica',
+        fontName=font_regular,
         fontSize=9,
         leading=13,
         textColor=colors.HexColor('#475569')
@@ -62,17 +71,17 @@ def generate_pdf_resume(
     sec_hdr_style = ParagraphStyle(
         'ResumeSecHdr',
         parent=styles['Normal'],
-        fontName='Helvetica-Bold',
+        fontName=font_bold,
         fontSize=10.5,
         leading=14,
-        textColor=colors.HexColor('#0f172a'),
+        textColor=primary_color,
         spaceBefore=6,
         spaceAfter=1
     )
     body_style = ParagraphStyle(
         'ResumeBody',
         parent=styles['Normal'],
-        fontName='Helvetica',
+        fontName=font_regular,
         fontSize=9.5,
         leading=13.5,
         textColor=colors.HexColor('#1e293b')
@@ -80,15 +89,15 @@ def generate_pdf_resume(
     exp_hdr_style = ParagraphStyle(
         'ResumeExpHdr',
         parent=styles['Normal'],
-        fontName='Helvetica-Bold',
+        fontName=font_bold,
         fontSize=9.5,
         leading=13.5,
-        textColor=colors.HexColor('#0f172a')
+        textColor=primary_color
     )
     bullet_style = ParagraphStyle(
         'ResumeBullet',
         parent=styles['Normal'],
-        fontName='Helvetica',
+        fontName=font_regular,
         fontSize=9,
         leading=13,
         textColor=colors.HexColor('#334155'),

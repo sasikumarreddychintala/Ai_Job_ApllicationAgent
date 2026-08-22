@@ -1,6 +1,13 @@
 # 🤖 Personal AI Job Application Agent
 
-An autonomous, multi-agent career automation platform powered by **28 Parallel Job Board Adapters**, **Multi-Tier AI Engine (Groq 70B / Google Gemini / Ollama)**, **Playwright Browser Automation**, **Dynamic ATS-Tailored PDF Resumes**, and a **2-Way Interactive Telegram Assistant**.
+[![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-blue?logo=python)](https://python.org)
+[![Platforms](https://img.shields.io/badge/Job%20Boards-28%20Parallel%20Adapters-success?logo=google-cloud)](https://github.com/sasikumarreddychintala/Ai_Job_ApllicationAgent)
+[![AI Engine](https://img.shields.io/badge/AI%20Engine-Groq%2070B%20%7C%20Gemini%20%7C%20Ollama-orange?logo=openai)](https://github.com/sasikumarreddychintala/Ai_Job_ApllicationAgent)
+[![Telegram Bot](https://img.shields.io/badge/Telegram-2--Way%20Assistant-2CA5E0?logo=telegram)](https://telegram.org)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://docker.com)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
+An autonomous, multi-agent career automation platform powered by **28 Parallel Job Board Adapters**, **Multi-Tier AI Engine (Groq 70B / Google Gemini / Ollama)**, **Playwright Browser Automation**, **1-Click LinkedIn Hiring Manager Finder**, **Automated 3/7-Day Follow-Up Tracker**, **Dynamic ATS-Tailored PDF Resumes**, and a **2-Way Interactive Telegram Assistant**.
 
 ---
 

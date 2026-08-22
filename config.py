@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     DAILY_APPLICATION_LIMIT: int = 50
     MIN_MATCH_SCORE: int = 70
     CUSTOM_EXPERIENCE_ALIGNMENT: bool = True
+    RESUME_THEME: str = "tech"
     LOG_LEVEL: str = "INFO"
 
     # Database Configuration (sqlite or postgres)

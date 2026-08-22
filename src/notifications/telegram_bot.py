@@ -641,6 +641,49 @@ class TelegramInteractiveBot:
                 self.send_message(f"⏰ *Auto-Pilot Status:* {status_text}\nTarget Daily Time: `{st['schedule_time']}`\nNext Scheduled Run: `{st['next_run'] or 'Not set'}`", target_chat_id=sender_id)
             return
 
+        elif cmd in ("/hiring", "/hiring_managers", "/leads"):
+            if not args or not args[0].isdigit():
+                self.send_message("Usage: `/hiring <job_id>`\nExample: `/hiring 890`", target_chat_id=sender_id)
+                return
+
+            job_id = int(args[0])
+            conn = init_db(self.db_path)
+            try:
+                c = conn.cursor()
+                c.execute("SELECT company, title, location FROM jobs WHERE id = ?", (job_id,))
+                row = c.fetchone()
+                if not row:
+                    self.send_message(f"❌ Job #{job_id} not found.", target_chat_id=sender_id)
+                    return
+                comp, tit, loc = row
+                import urllib.parse
+                q_em = urllib.parse.quote(f'"{comp}" ("Engineering Manager" OR "Head of Engineering")')
+                q_cto = urllib.parse.quote(f'"{comp}" ("CTO" OR "Founder" OR "Co-Founder")')
+                q_rec = urllib.parse.quote(f'"{comp}" ("Technical Recruiter" OR "Talent Acquisition")')
+
+                msg = (
+                    f"👤 *1-Click LinkedIn Hiring Manager Finder for [{job_id}] {tit} at {comp}:*\n\n"
+                    f"🔹 [View Engineering Managers & Leads](https://www.linkedin.com/search/results/people/?keywords={q_em})\n"
+                    f"🔹 [View CTOs & Founders](https://www.linkedin.com/search/results/people/?keywords={q_cto})\n"
+                    f"🔹 [View Technical Recruiters](https://www.linkedin.com/search/results/people/?keywords={q_rec})\n\n"
+                    f"💡 *Tip:* Send them a short connection note mentioning your experience and link: `https://resumeai.elevora.software`!"
+                )
+                self.send_message(msg, target_chat_id=sender_id)
+            finally:
+                conn.close()
+            return
+
+        elif cmd == "/theme":
+            if args and args[0].lower() in ("tech", "corporate", "classic"):
+                new_theme = "corporate" if "corp" in args[0].lower() or "class" in args[0].lower() else "tech"
+                settings.RESUME_THEME = new_theme
+                label = "🏛️ Classic Corporate (Serif)" if new_theme == "corporate" else "🚀 Modern Tech (Sans-Serif)"
+                self.send_message(f"🎨 Resume ATS Theme updated to: *{label}*!", target_chat_id=sender_id)
+            else:
+                curr = getattr(settings, "RESUME_THEME", "tech")
+                self.send_message(f"🎨 *Current Resume Theme:* `{curr}`\n\nOptions:\n• `/theme tech` (Modern Silicon Valley Style)\n• `/theme corporate` (Traditional Enterprise / Wall St Style)", target_chat_id=sender_id)
+            return
+
         else:
             self.send_message("❓ Unknown command. Type `/help` to see all available commands!", target_chat_id=sender_id)
 

@@ -42,15 +42,19 @@ class NotificationManager:
         import urllib.parse
         from pathlib import Path
         clean_url = url if (url and url.startswith("http") and "hirect.in" not in url) else f"https://www.google.com/search?q={urllib.parse.quote(f'{title} {company} jobs')}"
+        linkedin_search_q = urllib.parse.quote(f'"{company}" ("Engineering Manager" OR "CTO" OR "Tech Lead" OR "Recruiter")')
+        linkedin_hiring_url = f"https://www.linkedin.com/search/results/people/?keywords={linkedin_search_q}"
+
         tg = TelegramNotifier()
         if tg.is_configured:
             tg_msg = (
-                f"🎯 *NEW MATCH FOUND ({score}/100)*\n\n"
+                f"🎯 *TOP MATCH ALERT ({score}% Fit)*\n\n"
                 f"🏢 *Company:* {company}\n"
                 f"💼 *Role:* {title}\n"
                 f"🌐 *Platform:* {src_label}\n"
-                f"⚡ *Tech Match:* {skills_str}\n\n"
-                f"🔗 *Apply Link:*\n{clean_url}\n\n"
+                f"⚡ *Key Skills:* {skills_str}\n\n"
+                f"🔗 [Open Job Application Link]({clean_url})\n"
+                f"👤 [Find Hiring Managers on LinkedIn]({linkedin_hiring_url})\n\n"
                 f"📄 *Tailored ATS Resume attached below:* 👇"
             )
             tg.send_message(tg_msg)
