@@ -566,6 +566,63 @@ class TelegramInteractiveBot:
                 conn.close()
             return
 
+        elif cmd == "/apply":
+            if not args or not args[0].isdigit():
+                self.send_message("Usage: `/apply <job_id>`\nExample: `/apply 890`", target_chat_id=sender_id)
+                return
+
+            job_id = int(args[0])
+            self.send_message(f"🤖 *Launching Stealth Auto-Apply for Job ID #{job_id}...* Tailoring resume and auto-filling form...", target_chat_id=sender_id)
+
+            def _bg_apply():
+                try:
+                    conn = init_db(self.db_path)
+                    c = conn.cursor()
+                    c.execute("SELECT company, title, url FROM jobs WHERE id = ?", (job_id,))
+                    row = c.fetchone()
+                    conn.close()
+
+                    if not row:
+                        self.send_message(f"❌ Job #{job_id} not found.", target_chat_id=sender_id)
+                        return
+                    comp, tit, url = row
+
+                    from src.automation.pilot import PilotRunner
+                    runner = PilotRunner()
+                    res = runner.run_pilot_on_url(url, is_live_submission=not settings.DRY_RUN)
+
+                    status_label = "✅ Form Auto-Filled & Prepared (DRY_RUN inspection)" if settings.DRY_RUN else "🚀 Application Submitted Live!"
+                    msg = (
+                        f"{status_label}\n\n"
+                        f"🏢 *Company:* {comp}\n"
+                        f"💼 *Role:* {tit}\n"
+                        f"🔗 *URL:* {url}\n"
+                        f"Status saved in database."
+                    )
+                    self.send_message(msg, target_chat_id=sender_id)
+
+                except Exception as e:
+                    self.send_message(f"❌ Auto-apply error for Job #{job_id}: {e}", target_chat_id=sender_id)
+
+            threading.Thread(target=_bg_apply, daemon=True).start()
+            return
+
+        elif cmd == "/autoapply":
+            self.send_message("🤖 *Starting Autonomous Auto-Apply Pipeline* for all qualified matches (≥80%)...", target_chat_id=sender_id)
+
+            def _bg_autoapply_all():
+                try:
+                    from src.agents.orchestrator import ApplicationOrchestrator
+                    orch = ApplicationOrchestrator()
+                    res = orch.run_pipeline()
+                    processed = res.get("processed", 0)
+                    self.send_message(f"🎉 *Auto-Apply Pipeline Complete!*\n\nProcessed: *{processed}* applications.\nCheck /stats for updated counts.", target_chat_id=sender_id)
+                except Exception as e:
+                    self.send_message(f"❌ Auto-apply pipeline notice: {e}", target_chat_id=sender_id)
+
+            threading.Thread(target=_bg_autoapply_all, daemon=True).start()
+            return
+
         elif cmd == "/email":
             if len(args) < 2 or not args[0].isdigit() or "@" not in args[1]:
                 self.send_message("Usage: `/email <job_id> <recipient_email>`\nExample: `/email 1 careers@company.com`", target_chat_id=sender_id)
