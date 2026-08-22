@@ -276,7 +276,82 @@ class TelegramInteractiveBot:
                 self.send_message(f"✅ *1–2 Yrs Search Complete!*\n\nDiscovered: *{len(discovered)}* | Qualified (≥70%): *{len(qualified)}*", target_chat_id=sender_id)
                 self._handle_command("/top", sender_id, sender_name)
 
-            threading.Thread(target=_bg_jr_search, daemon=True).start()
+        elif cmd in ("/ai", "/genai", "/llm"):
+            location_arg = " ".join(args) if args else "Bengaluru"
+            query_arg = "AI Engineer GenAI LLM LangChain RAG 0-2 years"
+            self.send_message(f"🤖 *Searching AI & GenAI Roles* in *'{location_arg}'* across 28 platforms... This will take ~10s.", target_chat_id=sender_id)
+            
+            def _bg_ai_search():
+                from src.jobs.finder import JobFinder
+                from src.agents.jd_agent import JDAgent
+                from src.agents.match_agent import MatchAgent
+
+                finder = JobFinder.create_multi_source_finder()
+                discovered = finder.discover_jobs(query=query_arg, location=location_arg, time_range="3d")
+                
+                jd_agent = JDAgent()
+                analyzed = jd_agent.analyze_all_pending_jobs(limit=100)
+
+                match_agent = MatchAgent()
+                evals = match_agent.evaluate_all_pending_jobs()
+
+                qualified = [e for e in evals if e.overall_score >= 70]
+                self.send_message(f"✅ *AI & GenAI Search Complete!*\n\nDiscovered: *{len(discovered)}* | Qualified (≥70%): *{len(qualified)}*", target_chat_id=sender_id)
+                self._handle_command("/top", sender_id, sender_name)
+
+            threading.Thread(target=_bg_ai_search, daemon=True).start()
+            return
+
+        elif cmd in ("/data", "/analytics"):
+            location_arg = " ".join(args) if args else "Bengaluru"
+            query_arg = "Data Analyst Python SQL Analytics Pandas 0-2 years"
+            self.send_message(f"📊 *Searching Data Analyst & Analytics Roles* in *'{location_arg}'* across 28 platforms...", target_chat_id=sender_id)
+            
+            def _bg_data_search():
+                from src.jobs.finder import JobFinder
+                from src.agents.jd_agent import JDAgent
+                from src.agents.match_agent import MatchAgent
+
+                finder = JobFinder.create_multi_source_finder()
+                discovered = finder.discover_jobs(query=query_arg, location=location_arg, time_range="3d")
+                
+                jd_agent = JDAgent()
+                analyzed = jd_agent.analyze_all_pending_jobs(limit=100)
+
+                match_agent = MatchAgent()
+                evals = match_agent.evaluate_all_pending_jobs()
+
+                qualified = [e for e in evals if e.overall_score >= 70]
+                self.send_message(f"✅ *Data Analytics Search Complete!*\n\nDiscovered: *{len(discovered)}* | Qualified (≥70%): *{len(qualified)}*", target_chat_id=sender_id)
+                self._handle_command("/top", sender_id, sender_name)
+
+            threading.Thread(target=_bg_data_search, daemon=True).start()
+            return
+
+        elif cmd in ("/backend", "/python", "/swe", "/software"):
+            location_arg = " ".join(args) if args else "Bengaluru"
+            query_arg = "Associate Software Engineer Python FastAPI Backend 0-2 years"
+            self.send_message(f"💻 *Searching Software & Python Backend Roles* in *'{location_arg}'* across 28 platforms...", target_chat_id=sender_id)
+            
+            def _bg_swe_search():
+                from src.jobs.finder import JobFinder
+                from src.agents.jd_agent import JDAgent
+                from src.agents.match_agent import MatchAgent
+
+                finder = JobFinder.create_multi_source_finder()
+                discovered = finder.discover_jobs(query=query_arg, location=location_arg, time_range="3d")
+                
+                jd_agent = JDAgent()
+                analyzed = jd_agent.analyze_all_pending_jobs(limit=100)
+
+                match_agent = MatchAgent()
+                evals = match_agent.evaluate_all_pending_jobs()
+
+                qualified = [e for e in evals if e.overall_score >= 70]
+                self.send_message(f"✅ *Software / Backend Search Complete!*\n\nDiscovered: *{len(discovered)}* | Qualified (≥70%): *{len(qualified)}*", target_chat_id=sender_id)
+                self._handle_command("/top", sender_id, sender_name)
+
+            threading.Thread(target=_bg_swe_search, daemon=True).start()
             return
 
         elif cmd == "/search":
