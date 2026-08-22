@@ -118,14 +118,82 @@ class TelegramInteractiveBot:
                             self._last_update_id = update.get("update_id", self._last_update_id)
                             msg = update.get("message", {})
                             text = (msg.get("text") or "").strip()
+                            doc = msg.get("document")
                             sender_id = str(msg.get("chat", {}).get("id", ""))
                             sender_name = msg.get("from", {}).get("first_name", "User")
 
-                            if text:
+                            if doc:
+                                self._handle_document(doc, sender_id, sender_name)
+                            elif text:
                                 self._handle_command(text, sender_id, sender_name)
                 time.sleep(1.0)
             except Exception as e:
                 time.sleep(3.0)
+
+    def _handle_document(self, doc: Dict[str, Any], sender_id: str, sender_name: str):
+        """Downloads, parses, and updates candidate master resume when a user sends a PDF file."""
+        if self.chat_id and sender_id != self.chat_id:
+            self.send_message("⛔ Unauthorized.", target_chat_id=sender_id)
+            return
+
+        file_name = doc.get("file_name", "resume.pdf")
+        file_id = doc.get("file_id")
+        if not file_id or not file_name.lower().endswith((".pdf", ".docx")):
+            self.send_message("⚠️ Please send your resume as a **.PDF** (or .DOCX) document.", target_chat_id=sender_id)
+            return
+
+        self.send_message(f"📥 *Received '{file_name}'!* Downloading and parsing your new Master Resume...", target_chat_id=sender_id)
+
+        def _bg_process_doc():
+            try:
+                # 1. Get file path from Telegram
+                info_url = f"https://api.telegram.org/bot{self.bot_token}/getFile?file_id={file_id}"
+                req = urllib.request.Request(info_url, headers={"User-Agent": "JobAgent/2.0"})
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    info_data = json.loads(resp.read().decode("utf-8"))
+                
+                file_path_tg = info_data.get("result", {}).get("file_path")
+                if not file_path_tg:
+                    self.send_message("❌ Failed to retrieve document from Telegram servers.", target_chat_id=sender_id)
+                    return
+
+                # 2. Download file
+                download_url = f"https://api.telegram.org/file/bot{self.bot_token}/{file_path_tg}"
+                local_dest = Path(settings.MASTER_RESUME_PATH)
+                local_dest.parent.mkdir(parents=True, exist_ok=True)
+                
+                down_req = urllib.request.Request(download_url, headers={"User-Agent": "JobAgent/2.0"})
+                with urllib.request.urlopen(down_req, timeout=30) as dresp:
+                    content = dresp.read()
+                    local_dest.write_bytes(content)
+
+                # 3. Parse resume with ResumeParser
+                from src.resume.parser import ResumeParser
+                parser = ResumeParser()
+                parsed_profile = parser.parse(local_dest)
+
+                # 4. Save to candidate_profile.json
+                pm = ProfileManager()
+                pm.save_profile(parsed_profile)
+
+                c_info = parsed_profile.contact_info
+                skills_preview = ", ".join(parsed_profile.skills[:6]) if parsed_profile.skills else "Python, FastAPI, SQL"
+
+                success_msg = (
+                    f"✅ *Master Resume Successfully Updated & Parsed!*\n\n"
+                    f"👤 *Candidate:* `{c_info.full_name or sender_name}`\n"
+                    f"📧 *Email:* `{c_info.email or 'N/A'}`\n"
+                    f"📱 *Phone:* `{c_info.phone or 'N/A'}`\n"
+                    f"⚡ *Top Skills Detected:* {skills_preview} (+{max(0, len(parsed_profile.skills)-6)} more)\n\n"
+                    f"🎉 All future job searches and tailored PDF resumes will now use your newly uploaded resume!"
+                )
+                self.send_message(success_msg, target_chat_id=sender_id)
+
+            except Exception as e:
+                logger.error(f"[Telegram Bot] Error parsing uploaded resume: {e}")
+                self.send_message(f"❌ Error processing resume document: {e}", target_chat_id=sender_id)
+
+        threading.Thread(target=_bg_process_doc, daemon=True).start()
 
     def _handle_command(self, text: str, sender_id: str, sender_name: str):
         """Processes incoming user commands."""
