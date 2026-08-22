@@ -50,27 +50,35 @@ class GenericFormAdapter(BaseFormAdapter):
         except Exception:
             pass
 
-        # 1. Contact Information
-        filler.fill_text_field("name", c.full_name)
-        filler.fill_text_field("full_name", c.full_name)
-        filler.fill_text_field("first_name", c.full_name.split()[0])
-        if len(c.full_name.split()) > 1:
-            filler.fill_text_field("last_name", " ".join(c.full_name.split()[1:]))
+        # 1. Contact Information (Grouped by field type)
+        def _fill_first(keys: List[str], val: str):
+            if not val:
+                return False
+            for k in keys:
+                if filler.fill_text_field(k, val):
+                    return True
+            return False
 
-        filler.fill_text_field("email", c.email)
+        # Name
+        if not _fill_first(["full_name", "fullName", "name", "candidate_name"], c.full_name):
+            filler.fill_text_field("first_name", c.full_name.split()[0])
+            if len(c.full_name.split()) > 1:
+                filler.fill_text_field("last_name", " ".join(c.full_name.split()[1:]))
+
+        # Email & Phone
+        _fill_first(["email", "email_address", "user_email"], c.email)
         if c.phone:
-            filler.fill_text_field("phone", c.phone)
-            filler.fill_text_field("mobile", c.phone)
+            _fill_first(["phone", "mobile", "phone_number", "contact_number"], c.phone)
+
+        # Location & Links
         if c.location:
-            filler.fill_text_field("location", c.location)
-            filler.fill_text_field("city", c.location)
+            _fill_first(["location", "city", "current_location", "address"], c.location)
         if c.linkedin:
-            filler.fill_text_field("linkedin", c.linkedin)
+            _fill_first(["linkedin", "linkedin_profile", "linkedin_url"], c.linkedin)
         if c.github:
-            filler.fill_text_field("github", c.github)
+            _fill_first(["github", "github_profile", "github_url"], c.github)
         if c.portfolio:
-            filler.fill_text_field("portfolio", c.portfolio)
-            filler.fill_text_field("website", c.portfolio)
+            _fill_first(["portfolio", "website", "portfolio_url", "personal_website"], c.portfolio)
 
         # 2. Upload Resume PDF
         if tailored_pdf_path and tailored_pdf_path.exists():

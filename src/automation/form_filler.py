@@ -51,7 +51,7 @@ class FormFiller:
             except Exception:
                 continue
 
-        logger.warning(f"Could not locate text field for: '{field_name}'")
+        logger.debug(f"Could not locate text field for: '{field_name}'")
         return False
 
     def select_dropdown_option(self, field_name: str, option_text: str) -> bool:
