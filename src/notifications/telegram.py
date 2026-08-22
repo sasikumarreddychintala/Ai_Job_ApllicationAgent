@@ -55,22 +55,26 @@ class TelegramNotifier:
 
         url = f"https://api.telegram.org/bot{self.bot_token}/sendDocument"
 
-        try:
-            import requests
-            with open(p, "rb") as f:
-                resp = requests.post(
-                    url,
-                    data={"chat_id": self.chat_id, "caption": caption},
-                    files={"document": (p.name, f, "application/pdf")},
-                    timeout=25
-                )
-            if resp.status_code == 200:
-                logger.info(f" Delivered document '{p.name}' directly to Telegram.")
-                return True
-            else:
-                logger.warning(f"Telegram document dispatch returned {resp.status_code}: {resp.text[:100]}")
-        except Exception as e:
-            logger.warning(f"Telegram document dispatch notice: {e}")
+        for attempt in range(2):
+            try:
+                import requests
+                with open(p, "rb") as f:
+                    resp = requests.post(
+                        url,
+                        data={"chat_id": self.chat_id, "caption": caption},
+                        files={"document": (p.name, f, "application/pdf")},
+                        timeout=60
+                    )
+                if resp.status_code == 200:
+                    logger.info(f" Delivered document '{p.name}' directly to Telegram.")
+                    return True
+                else:
+                    logger.warning(f"Telegram document dispatch returned {resp.status_code}: {resp.text[:100]}")
+            except Exception as e:
+                if attempt == 1:
+                    logger.warning(f"Telegram document dispatch notice: {e}")
+                import time
+                time.sleep(1.5)
 
         return False
 

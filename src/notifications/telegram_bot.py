@@ -84,23 +84,26 @@ class TelegramInteractiveBot:
         if not self.bot_token or not cid or not file_path.exists():
             return False
 
-        url = f"https://api.telegram.org/bot{self.bot_token}/sendDocument"
-        try:
-            import requests
-            with open(file_path, "rb") as f:
-                resp = requests.post(
-                    url,
-                    data={"chat_id": cid, "caption": caption},
-                    files={"document": (file_path.name, f, "application/pdf")},
-                    timeout=25
-                )
-            if resp.status_code == 200:
-                logger.info(f"[Telegram Bot] PDF '{file_path.name}' delivered to Telegram successfully!")
-                return True
-            else:
-                logger.warning(f"[Telegram Bot] Send document returned {resp.status_code}: {resp.text[:100]}")
-        except Exception as e:
-            logger.warning(f"[Telegram Bot] Send document error: {e}")
+        for attempt in range(2):
+            try:
+                import requests
+                with open(file_path, "rb") as f:
+                    resp = requests.post(
+                        url,
+                        data={"chat_id": cid, "caption": caption},
+                        files={"document": (file_path.name, f, "application/pdf")},
+                        timeout=60
+                    )
+                if resp.status_code == 200:
+                    logger.info(f"[Telegram Bot] PDF '{file_path.name}' delivered to Telegram successfully!")
+                    return True
+                else:
+                    logger.warning(f"[Telegram Bot] Send document returned {resp.status_code}: {resp.text[:100]}")
+            except Exception as e:
+                if attempt == 1:
+                    logger.warning(f"[Telegram Bot] Send document error: {e}")
+                import time
+                time.sleep(1.5)
 
         return False
 
