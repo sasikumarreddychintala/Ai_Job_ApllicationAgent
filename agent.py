@@ -207,6 +207,7 @@ def main():
     parser.add_argument("--send-test-notification", action="store_true", help="Send a test alert across all notification channels")
     parser.add_argument("--apply-url", type=str, metavar="URL", help="Execute targeted pilot run on a specific job URL")
     parser.add_argument("--live", action="store_true", help="Perform live submission (clicks Submit button) when used with --apply-url")
+    parser.add_argument("--login", action="store_true", help="Open persistent browser window to log in to LinkedIn/Naukri/Indeed and save session cookies forever")
     parser.add_argument("--ui", action="store_true", help="Launch the local web dashboard interface")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind the local dashboard server to (default: 8000)")
     parser.add_argument("--schedule", nargs="?", const="08:00", help="Run automated background morning job discovery at specified time (default: 08:00)")
@@ -215,6 +216,25 @@ def main():
     parser.add_argument("--auto-apply", action="store_true", help="One-command full workflow: upload resume, discover matching jobs, and apply")
     parser.add_argument("--resume", type=str, help="Path to resume file (used with --auto-apply)")
     args = parser.parse_args()
+
+    if args.login:
+        logger.info("[bold cyan] Starting Interactive Persistent Login Setup Mode...[/bold cyan]")
+        logger.info("Opening browser window so you can log into LinkedIn, Naukri, Indeed, and Google.")
+        from src.automation.browser import BrowserManager
+        with BrowserManager(headless=False) as page:
+            try:
+                page.goto("https://www.linkedin.com/login")
+            except Exception:
+                pass
+            logger.info("[bold green] Browser is open! Log into all your accounts now. When finished, simply close the browser window or press Enter in this terminal.[/bold green]")
+            try:
+                input()
+            except Exception:
+                import time
+                while not page.is_closed():
+                    time.sleep(1)
+        logger.info("[bold green] Session cookies and login credentials saved permanently in 'data/logs/browser_context/'![/bold green]")
+        return
 
     if args.telegram_bot:
         from src.notifications.telegram_bot import telegram_bot
