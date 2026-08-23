@@ -142,7 +142,12 @@ class PilotRunner:
                     if not is_live_submission:
                         with conn:
                             conn.execute("UPDATE applications SET status = 'READY_TO_SUBMIT' WHERE job_id = ?", (job_id,))
-                        logger.info(f" [DRY_RUN] Application form filled for '{title}' at {comp}. Stopped before final submit.")
+                        pause_secs = getattr(settings, "INSPECTION_PAUSE_SECONDS", 15)
+                        logger.info(f" [DRY_RUN] Application form filled for '{title}' at {comp}. Pausing {pause_secs}s for inspection...")
+                        try:
+                            page.wait_for_timeout(pause_secs * 1000)
+                        except Exception:
+                            pass
                         final_status = "READY_TO_SUBMIT"
                     else:
                         with conn:

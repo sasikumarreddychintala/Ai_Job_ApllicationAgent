@@ -146,9 +146,10 @@ class ApplicationOrchestrator:
                             if settings.DRY_RUN:
                                 with conn:
                                     conn.execute("UPDATE applications SET status = 'READY_TO_SUBMIT' WHERE job_id = ?", (job_id,))
-                                logger.info(f" [DRY_RUN] Form filled for '{title}' at {company}. (Inspection completed)")
+                                pause_secs = getattr(settings, "INSPECTION_PAUSE_SECONDS", 15)
+                                logger.info(f" [DRY_RUN] Form filled for '{title}' at {company}. Pausing {pause_secs}s for your review & details...")
                                 try:
-                                    page.wait_for_timeout(1500)
+                                    page.wait_for_timeout(pause_secs * 1000)
                                 except Exception:
                                     pass
                             else:
