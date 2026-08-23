@@ -38,8 +38,8 @@ class Settings(BaseSettings):
 
     # Playwright Browser Configuration
     HEADLESS: bool = False
-    SLOW_MO: int = 500
-    BROWSER_TIMEOUT: int = 30000
+    SLOW_MO: int = 50
+    BROWSER_TIMEOUT: int = 15000
 
     # Mobile & Chatbot Notifications (Telegram, Discord)
     TELEGRAM_BOT_TOKEN: str = ""

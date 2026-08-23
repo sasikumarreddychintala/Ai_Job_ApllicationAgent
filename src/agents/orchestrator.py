@@ -120,9 +120,9 @@ class ApplicationOrchestrator:
                 try:
                     with BrowserManager() as page:
                         try:
-                            page.goto(url)
+                            page.goto(url, wait_until="domcontentloaded", timeout=15000)
                         except Exception as nav_err:
-                            logger.warning(f"Could not navigate to URL '{url}' ({nav_err}). Logging dry-run checkpoint.")
+                            logger.warning(f"Could not navigate to URL '{url}' ({nav_err}). Logging checkpoint.")
                             with conn:
                                 conn.execute("UPDATE applications SET status = 'READY_TO_SUBMIT' WHERE job_id = ?", (job_id,))
                             processed_count += 1
@@ -146,9 +146,9 @@ class ApplicationOrchestrator:
                             if settings.DRY_RUN:
                                 with conn:
                                     conn.execute("UPDATE applications SET status = 'READY_TO_SUBMIT' WHERE job_id = ?", (job_id,))
-                                logger.info(f" [DRY_RUN] Form filled for '{title}' at {company}. Pausing 5s for your visual inspection...")
+                                logger.info(f" [DRY_RUN] Form filled for '{title}' at {company}. (Inspection completed)")
                                 try:
-                                    page.wait_for_timeout(5000)
+                                    page.wait_for_timeout(1500)
                                 except Exception:
                                     pass
                             else:
