@@ -106,7 +106,9 @@ class OllamaClient:
         """Calls Groq Cloud API with automatic active model fallback."""
         clean_key = api_key.strip().strip("'\"")
         configured_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile").strip().strip("'\"")
-        candidate_models = [configured_model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+        # json_object mode is supported by llama-3 models on Groq — mixtral does NOT support it
+        json_object_models = {"llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192", "llama3-8b-8192"}
+        candidate_models = [configured_model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"]
         # Deduplicate preserving order
         models_to_try = []
         for m in candidate_models:
@@ -118,15 +120,18 @@ class OllamaClient:
 
         for model_name in models_to_try:
             try:
+                use_json_mode = model_name in json_object_models
                 payload = {
                     "model": model_name,
                     "messages": [
-                        {"role": "system", "content": "You are an expert AI Job Application & Resume Tailoring Engine. Always respond in strict, valid JSON matching the requested schema exactly."},
+                        {"role": "system", "content": "You are an expert AI Job Application & Resume Tailoring Engine. Always respond in strict, valid JSON matching the requested schema exactly. Output only raw JSON with no markdown fences or extra text."},
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": temperature,
-                    "response_format": {"type": "json_object"}
                 }
+                if use_json_mode:
+                    payload["response_format"] = {"type": "json_object"}
+
                 req = urllib.request.Request(
                     url,
                     data=json.dumps(payload).encode("utf-8"),
@@ -136,18 +141,26 @@ class OllamaClient:
                         "Authorization": f"Bearer {clean_key}"
                     }
                 )
-                with urllib.request.urlopen(req, timeout=25) as resp:
+                with urllib.request.urlopen(req, timeout=30) as resp:
                     if resp.status == 200:
                         data = json.loads(resp.read().decode("utf-8"))
                         content_str = data["choices"][0]["message"]["content"]
-                        parsed = json.loads(content_str)
+                        # Strip markdown fences if model ignored instructions
+                        content_str = content_str.strip()
+                        if content_str.startswith("```"):
+                            content_str = content_str.split("```")[1]
+                            if content_str.startswith("json"):
+                                content_str = content_str[4:]
+                        parsed = json.loads(content_str.strip())
                         validated = response_schema(**parsed)
-                        logger.info(f" ⚡ [Groq {model_name}] Successfully generated {response_schema.__name__} in 0.2s!")
+                        logger.info(f" ⚡ [Groq {model_name}] Successfully generated {response_schema.__name__}!")
                         return validated
             except Exception as e:
                 last_ex = e
-                # If model not found (404), try next candidate model
-                if "404" in str(e):
+                err_str = str(e)
+                # 404 = model not found, 400 = bad request (often json_object unsupported) → try next model
+                if "404" in err_str or "400" in err_str:
+                    logger.debug(f"[Groq] Model {model_name} rejected ({err_str[:80]}), trying next...")
                     continue
                 raise e
 
@@ -162,8 +175,9 @@ class OllamaClient:
     ) -> T:
         """Calls Google Gemini Cloud API with automatic active model fallback."""
         clean_key = api_key.strip().strip("'\"")
-        configured_model = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash").strip().strip("'\"")
-        candidate_models = [configured_model, "gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+        configured_model = getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash").strip().strip("'\"")
+        # gemini-2.5-flash is free & most capable; fallback chain uses stable names
+        candidate_models = [configured_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
         models_to_try = []
         for m in candidate_models:
             if m and m not in models_to_try:
@@ -171,42 +185,49 @@ class OllamaClient:
 
         last_ex = None
         for model_name in models_to_try:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
-                payload = {
-                    "contents": [
-                        {
-                            "parts": [
-                                {"text": f"You are an expert AI Job Application & Resume Tailoring Engine. Always respond in strict, valid JSON matching the requested schema exactly.\n\n{prompt}"}
-                            ]
+            for api_version in ("v1beta", "v1"):
+                try:
+                    url = f"https://generativelanguage.googleapis.com/{api_version}/models/{model_name}:generateContent?key={clean_key}"
+                    payload = {
+                        "contents": [
+                            {
+                                "parts": [
+                                    {"text": f"You are an expert AI Job Application & Resume Tailoring Engine. Always respond in strict, valid JSON matching the requested schema exactly. Output only raw JSON with no markdown fences.\n\n{prompt}"}
+                                ]
+                            }
+                        ],
+                        "generationConfig": {
+                            "responseMimeType": "application/json",
+                            "temperature": temperature
                         }
-                    ],
-                    "generationConfig": {
-                        "responseMimeType": "application/json",
-                        "temperature": temperature
                     }
-                }
-                req = urllib.request.Request(
-                    url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={
-                        "Content-Type": "application/json",
-                        "User-Agent": "Mozilla/5.0 (compatible; JobAgent/2.0)"
-                    }
-                )
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    if resp.status == 200:
-                        data = json.loads(resp.read().decode("utf-8"))
-                        text_content = data["candidates"][0]["content"]["parts"][0]["text"]
-                        parsed = json.loads(text_content)
-                        validated = response_schema(**parsed)
-                        logger.info(f" 💎 [Google Gemini {model_name}] Successfully generated {response_schema.__name__} in 1.2s!")
-                        return validated
-            except Exception as e:
-                last_ex = e
-                if "404" in str(e):
-                    continue
-                raise e
+                    req = urllib.request.Request(
+                        url,
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={
+                            "Content-Type": "application/json",
+                            "User-Agent": "Mozilla/5.0 (compatible; JobAgent/2.0)"
+                        }
+                    )
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        if resp.status == 200:
+                            data = json.loads(resp.read().decode("utf-8"))
+                            text_content = data["candidates"][0]["content"]["parts"][0]["text"]
+                            text_content = text_content.strip()
+                            if text_content.startswith("```"):
+                                text_content = text_content.split("```")[1]
+                                if text_content.startswith("json"):
+                                    text_content = text_content[4:]
+                            parsed = json.loads(text_content.strip())
+                            validated = response_schema(**parsed)
+                            logger.info(f" 💎 [Gemini {model_name}] Successfully generated {response_schema.__name__}!")
+                            return validated
+                except Exception as e:
+                    last_ex = e
+                    if "404" in str(e):
+                        logger.debug(f"[Gemini] {model_name} ({api_version}) not found, trying next...")
+                        continue  # try next api_version or model
+                    raise e
 
         raise last_ex or RuntimeError("Gemini models exhausted")
 

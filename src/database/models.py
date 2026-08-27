@@ -298,57 +298,79 @@ class PostgresConnectionWrapper:
             self.rollback()
 
 def _build_postgres_conn(database_url: str):
-    """Builds a robust psycopg2 connection to Supabase with timeout and keepalive settings."""
+    """Builds a robust psycopg2 connection to Supabase with timeout settings."""
     import psycopg2
-    # Add connection options for Supabase pooler reliability
+    # Switch to Transaction Mode port (6543) automatically if user is on Session Mode (5432)
+    # Transaction mode: unlimited concurrent connections vs Session mode: max 15
+    tx_url = database_url.strip()
+    if ":5432/" in tx_url:
+        tx_url = tx_url.replace(":5432/", ":6543/")
+        logger.info("🔀 Auto-switched Supabase pooler to Transaction Mode (port 6543) for unlimited concurrency.")
     raw_conn = psycopg2.connect(
-        database_url,
-        connect_timeout=10,
-        options="-c statement_timeout=30000 -c idle_in_transaction_session_timeout=60000"
+        tx_url,
+        connect_timeout=15,
+        options="-c statement_timeout=30000"
     )
     raw_conn.autocommit = False
-    # Enable TCP keepalive for long-running cloud connections
-    try:
-        from psycopg2.extensions import ISOLATION_LEVEL_READ_COMMITTED
-        raw_conn.set_isolation_level(ISOLATION_LEVEL_READ_COMMITTED)
-    except Exception:
-        pass
     return raw_conn
 
+# Singleton connection — reuse ONE connection across all threads to avoid pool exhaustion
+_PG_SINGLETON: object = None
 _DB_INITIALIZED = False
+_pg_lock = None
+
+def _get_pg_lock():
+    global _pg_lock
+    if _pg_lock is None:
+        import threading
+        _pg_lock = threading.Lock()
+    return _pg_lock
 
 def init_db(db_path: Path = settings.DATABASE_PATH):
-    """Initializes database connection and schema tables (SQLite or PostgreSQL)."""
-    global _DB_INITIALIZED
+    """Initializes database connection and schema tables (SQLite or PostgreSQL).
+
+    PostgreSQL: returns the process-wide singleton PostgresConnectionWrapper.
+    SQLite: opens a per-call WAL connection (lightweight, thread-safe).
+    """
+    global _PG_SINGLETON, _DB_INITIALIZED
 
     db_type = getattr(settings, "DATABASE_TYPE", "sqlite")
     db_url = getattr(settings, "DATABASE_URL", "") or ""
 
     if db_type == "postgres" and db_url.strip():
-        for attempt in range(1, 4):
-            try:
-                raw_conn = _build_postgres_conn(db_url.strip())
-                # Run schema only once per process lifecycle
-                if not _DB_INITIALIZED:
-                    with raw_conn.cursor() as cur:
-                        # Split POSTGRES_SCHEMA_SQL into individual statements to avoid multi-stmt timeout
-                        statements = [s.strip() for s in POSTGRES_SCHEMA_SQL.split(";") if s.strip()]
-                        for stmt in statements:
-                            try:
-                                cur.execute(stmt)
-                            except Exception:
-                                pass  # Table already exists or ALTER already applied
-                    raw_conn.commit()
-                    logger.info("🟢 Supabase PostgreSQL connected and schema ready!")
-                    _DB_INITIALIZED = True
-                return PostgresConnectionWrapper(raw_conn)
-            except Exception as e:
-                logger.warning(f"PostgreSQL attempt {attempt}/3 failed: {e}")
-                if attempt == 3:
-                    logger.error("All PostgreSQL attempts exhausted. Falling back to SQLite database...")
-                else:
-                    import time
-                    time.sleep(1)
+        with _get_pg_lock():
+            # Re-use existing connection if still alive
+            if _PG_SINGLETON is not None:
+                try:
+                    _PG_SINGLETON._conn.cursor().execute("SELECT 1")
+                    return _PG_SINGLETON
+                except Exception:
+                    logger.info("PostgreSQL singleton connection dropped — reconnecting...")
+                    _PG_SINGLETON = None
+
+            for attempt in range(1, 4):
+                try:
+                    raw_conn = _build_postgres_conn(db_url.strip())
+                    if not _DB_INITIALIZED:
+                        with raw_conn.cursor() as cur:
+                            statements = [s.strip() for s in POSTGRES_SCHEMA_SQL.split(";") if s.strip()]
+                            for stmt in statements:
+                                try:
+                                    cur.execute(stmt)
+                                except Exception:
+                                    raw_conn.rollback()  # Reset txn after each failed DDL
+                        raw_conn.commit()
+                        logger.info("🟢 Supabase PostgreSQL connected and schema ready!")
+                        _DB_INITIALIZED = True
+                    _PG_SINGLETON = PostgresConnectionWrapper(raw_conn)
+                    return _PG_SINGLETON
+                except Exception as e:
+                    logger.warning(f"PostgreSQL attempt {attempt}/3 failed: {e}")
+                    if attempt == 3:
+                        logger.error("All PostgreSQL attempts exhausted. Falling back to SQLite database...")
+                    else:
+                        import time
+                        time.sleep(2 ** (attempt - 1))  # Exponential backoff: 1s, 2s
 
     try:
         conn = sqlite3.connect(db_path, check_same_thread=False)
