@@ -54,7 +54,7 @@ class OllamaClient:
             except Exception as e:
                 logger.warning(f"⚠️ Google Gemini notice / rate limit ({e}). Automatically failing over to next AI provider...")
 
-        # --- Tier 3: Try Local Ollama ---
+        # --- Tier 3: Try Local Ollama (Only if locally hosted) ---
         url = f"{self.base_url}/api/generate"
         payload = {
             "model": self.model,
@@ -76,7 +76,7 @@ class OllamaClient:
                     data=json.dumps(payload).encode("utf-8"),
                     headers={"Content-Type": "application/json"}
                 )
-                with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                with urllib.request.urlopen(req, timeout=5) as response:
                     result = json.loads(response.read().decode("utf-8"))
                     raw_json_str = result.get("response", "{}")
                     data = json.loads(raw_json_str)
@@ -86,10 +86,13 @@ class OllamaClient:
 
             except json.JSONDecodeError as e:
                 last_error = f"JSON decode error: {e}"
-                logger.warning(f"[Ollama Attempt {attempt}/{self.max_retries}] {last_error}")
+                logger.debug(f"[Ollama Attempt {attempt}/{self.max_retries}] {last_error}")
             except Exception as e:
-                last_error = f"Ollama generation / validation error: {e}"
-                logger.warning(f"[Ollama Attempt {attempt}/{self.max_retries}] {last_error}")
+                last_error = f"Ollama generation notice: {e}"
+                # If localhost connection refused (cloud environment), skip repeated retries immediately
+                if "connection refused" in str(e).lower() or "111" in str(e):
+                    break
+                logger.debug(f"[Ollama Attempt {attempt}/{self.max_retries}] {last_error}")
 
         raise RuntimeError(f"All AI providers (Groq, Gemini, Ollama) exhausted: {last_error}")
 
@@ -100,36 +103,55 @@ class OllamaClient:
         api_key: str,
         temperature: float = 0.1
     ) -> T:
-        """Calls Groq Cloud API for ultra-fast Llama 3.3 70B inference with schema validation."""
+        """Calls Groq Cloud API with automatic active model fallback."""
         clean_key = api_key.strip().strip("'\"")
-        groq_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile").strip().strip("'\"")
+        configured_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile").strip().strip("'\"")
+        candidate_models = [configured_model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+        # Deduplicate preserving order
+        models_to_try = []
+        for m in candidate_models:
+            if m and m not in models_to_try:
+                models_to_try.append(m)
+
         url = "https://api.groq.com/openai/v1/chat/completions"
-        payload = {
-            "model": groq_model,
-            "messages": [
-                {"role": "system", "content": "You are an expert AI Job Application & Resume Tailoring Engine. Always respond in strict, valid JSON matching the requested schema exactly."},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": temperature,
-            "response_format": {"type": "json_object"}
-        }
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (compatible; JobAgent/2.0)",
-                "Authorization": f"Bearer {clean_key}"
-            }
-        )
-        with urllib.request.urlopen(req, timeout=25) as resp:
-            if resp.status == 200:
-                data = json.loads(resp.read().decode("utf-8"))
-                content_str = data["choices"][0]["message"]["content"]
-                parsed = json.loads(content_str)
-                validated = response_schema(**parsed)
-                logger.info(f" ⚡ [Groq Llama-3.3-70B] Successfully generated {response_schema.__name__} in 0.2s!")
-                return validated
+        last_ex = None
+
+        for model_name in models_to_try:
+            try:
+                payload = {
+                    "model": model_name,
+                    "messages": [
+                        {"role": "system", "content": "You are an expert AI Job Application & Resume Tailoring Engine. Always respond in strict, valid JSON matching the requested schema exactly."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": temperature,
+                    "response_format": {"type": "json_object"}
+                }
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "Mozilla/5.0 (compatible; JobAgent/2.0)",
+                        "Authorization": f"Bearer {clean_key}"
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=25) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        content_str = data["choices"][0]["message"]["content"]
+                        parsed = json.loads(content_str)
+                        validated = response_schema(**parsed)
+                        logger.info(f" ⚡ [Groq {model_name}] Successfully generated {response_schema.__name__} in 0.2s!")
+                        return validated
+            except Exception as e:
+                last_ex = e
+                # If model not found (404), try next candidate model
+                if "404" in str(e):
+                    continue
+                raise e
+
+        raise last_ex or RuntimeError("Groq models exhausted")
 
     def _generate_gemini(
         self,
@@ -138,42 +160,55 @@ class OllamaClient:
         api_key: str,
         temperature: float = 0.1
     ) -> T:
-        """Calls Google Gemini Cloud API with structured JSON output and schema validation."""
+        """Calls Google Gemini Cloud API with automatic active model fallback."""
         clean_key = api_key.strip().strip("'\"")
-        gemini_model = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash").strip().strip("'\"")
-        if not gemini_model.startswith("gemini-"):
-            gemini_model = "gemini-1.5-flash"
+        configured_model = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash").strip().strip("'\"")
+        candidate_models = [configured_model, "gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+        models_to_try = []
+        for m in candidate_models:
+            if m and m not in models_to_try:
+                models_to_try.append(m)
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={clean_key}"
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": f"You are an expert AI Job Application & Resume Tailoring Engine. Always respond in strict, valid JSON matching the requested schema exactly.\n\n{prompt}"}
-                    ]
+        last_ex = None
+        for model_name in models_to_try:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
+                payload = {
+                    "contents": [
+                        {
+                            "parts": [
+                                {"text": f"You are an expert AI Job Application & Resume Tailoring Engine. Always respond in strict, valid JSON matching the requested schema exactly.\n\n{prompt}"}
+                            ]
+                        }
+                    ],
+                    "generationConfig": {
+                        "responseMimeType": "application/json",
+                        "temperature": temperature
+                    }
                 }
-            ],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "temperature": temperature
-            }
-        }
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (compatible; JobAgent/2.0)"
-            }
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            if resp.status == 200:
-                data = json.loads(resp.read().decode("utf-8"))
-                text_content = data["candidates"][0]["content"]["parts"][0]["text"]
-                parsed = json.loads(text_content)
-                validated = response_schema(**parsed)
-                logger.info(f" 💎 [Google Gemini {gemini_model}] Successfully generated {response_schema.__name__} in 1.2s!")
-                return validated
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "Mozilla/5.0 (compatible; JobAgent/2.0)"
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        text_content = data["candidates"][0]["content"]["parts"][0]["text"]
+                        parsed = json.loads(text_content)
+                        validated = response_schema(**parsed)
+                        logger.info(f" 💎 [Google Gemini {model_name}] Successfully generated {response_schema.__name__} in 1.2s!")
+                        return validated
+            except Exception as e:
+                last_ex = e
+                if "404" in str(e):
+                    continue
+                raise e
+
+        raise last_ex or RuntimeError("Gemini models exhausted")
 
     def is_online(self) -> bool:
         """Checks if Groq API, Gemini API, or local Ollama service is reachable."""
