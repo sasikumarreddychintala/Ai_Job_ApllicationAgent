@@ -3,7 +3,10 @@ import urllib.request
 from pathlib import Path
 from typing import Dict, Any
 
-import fitz  # PyMuPDF
+try:
+    import pymupdf as fitz  # PyMuPDF
+except ImportError:
+    import fitz
 import docx
 
 from config import settings
