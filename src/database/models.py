@@ -197,6 +197,96 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
+class PostgresCursorWrapper:
+    def __init__(self, cursor):
+        self._cur = cursor
+        self.lastrowid = None
+
+    def execute(self, sql: str, params=None):
+        clean_sql = sql
+        # Translate ? to %s for PostgreSQL
+        if "?" in clean_sql:
+            clean_sql = clean_sql.replace("?", "%s")
+        # Handle SQLite AUTOINCREMENT / lastrowid simulation for INSERTs
+        if clean_sql.strip().upper().startswith("INSERT INTO") and "RETURNING" not in clean_sql.upper():
+            clean_sql = clean_sql.rstrip(" ;") + " RETURNING id"
+            if params:
+                self._cur.execute(clean_sql, params)
+            else:
+                self._cur.execute(clean_sql)
+            try:
+                row = self._cur.fetchone()
+                if row:
+                    self.lastrowid = row[0] if isinstance(row, (tuple, list)) else row.get("id")
+            except Exception:
+                pass
+            return self
+
+        if params:
+            self._cur.execute(clean_sql, params)
+        else:
+            self._cur.execute(clean_sql)
+        return self
+
+    def executemany(self, sql: str, param_list):
+        clean_sql = sql.replace("?", "%s") if "?" in sql else sql
+        self._cur.executemany(clean_sql, param_list)
+        return self
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def fetchmany(self, size=None):
+        return self._cur.fetchmany(size) if size else self._cur.fetchmany()
+
+    def close(self):
+        self._cur.close()
+
+    def __iter__(self):
+        return iter(self._cur)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+class PostgresConnectionWrapper:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def cursor(self):
+        import psycopg2.extras
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        return PostgresCursorWrapper(cur)
+
+    def execute(self, sql: str, params=None):
+        cur = self.cursor()
+        cur.execute(sql, params)
+        return cur
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self.commit()
+        else:
+            self.rollback()
+        self.close()
+
 _DB_INITIALIZED = False
 
 def init_db(db_path: Path = settings.DATABASE_PATH):
@@ -206,14 +296,14 @@ def init_db(db_path: Path = settings.DATABASE_PATH):
     if getattr(settings, "DATABASE_TYPE", "sqlite") == "postgres" and getattr(settings, "DATABASE_URL", ""):
         try:
             import psycopg2
-            conn = psycopg2.connect(settings.DATABASE_URL)
-            with conn.cursor() as cur:
+            raw_conn = psycopg2.connect(settings.DATABASE_URL)
+            with raw_conn.cursor() as cur:
                 cur.execute(POSTGRES_SCHEMA_SQL)
-            conn.commit()
+            raw_conn.commit()
             if not _DB_INITIALIZED:
-                logger.info("PostgreSQL database initialized successfully.")
+                logger.info("🟢 Supabase PostgreSQL database connected and schema initialized successfully!")
                 _DB_INITIALIZED = True
-            return conn
+            return PostgresConnectionWrapper(raw_conn)
         except Exception as e:
             logger.error(f"Failed to initialize PostgreSQL database: {e}")
             logger.info("Falling back to SQLite database...")
@@ -227,7 +317,6 @@ def init_db(db_path: Path = settings.DATABASE_PATH):
     except Exception as e:
         logger.error(f"Failed to initialize SQLite database at {db_path}: {e}")
         raise e
-
 
 if __name__ == "__main__":
     init_db()
