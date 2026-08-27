@@ -20,12 +20,13 @@ class NaukriJobAdapter(BaseJobAdapter):
         req = urllib.request.Request(
             url,
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Accept": "*/*",
                 "Accept-Language": "en-US,en;q=0.9",
                 "appid": "109",
-                "systemid": "109",
-                "clientid": "d34b21"
+                "systemid": "Naukri",
+                "clientid": "d34b21",
+                "Referer": "https://www.naukri.com/"
             }
         )
 
@@ -58,7 +59,7 @@ class NaukriJobAdapter(BaseJobAdapter):
                                 )
                             )
         except Exception as e:
-            logger.warning(f"Naukri live job fetch notice: {e}")
+            logger.debug(f"Naukri live job fetch notice: {e}")
 
         logger.info(f" Naukri adapter fetched {len(results)} live jobs.")
         return results
