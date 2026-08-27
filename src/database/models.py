@@ -221,11 +221,8 @@ def init_db(db_path: Path = settings.DATABASE_PATH):
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
-        if not _DB_INITIALIZED:
-            with conn:
-                conn.executescript(SCHEMA_SQL)
-            logger.info(f"SQLite database initialized successfully at: {db_path}")
-            _DB_INITIALIZED = True
+        with conn:
+            conn.executescript(SCHEMA_SQL)
         return conn
     except Exception as e:
         logger.error(f"Failed to initialize SQLite database at {db_path}: {e}")

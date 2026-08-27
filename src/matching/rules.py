@@ -27,4 +27,18 @@ def check_hard_constraints(
         logger.info(f"[SKIP] Skipping high experience role requiring {requirements.min_years_experience}+ yrs.")
         return True, reason
 
+    # Hard Constraints from Job Requirements (Citizenship, Clearance, Sponsorship)
+    for hc in getattr(requirements, "hard_constraints", []):
+        hc_lower = hc.lower()
+        if "citizen" in hc_lower or "citizenship" in hc_lower or "clearance" in hc_lower:
+            if "citizen" not in work_auth and "authorized" not in work_auth:
+                reason = f"Hard constraint failed: Job requires '{hc}'."
+                logger.info(f"[SKIP] {reason}")
+                return True, reason
+        if "no sponsor" in hc_lower or "sponsorship not available" in hc_lower:
+            if "requires sponsorship" in work_auth or "h1b" in work_auth:
+                reason = f"Hard constraint failed: Job does not sponsor visas ('{hc}')."
+                logger.info(f"[SKIP] {reason}")
+                return True, reason
+
     return False, None

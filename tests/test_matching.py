@@ -89,15 +89,23 @@ def test_match_agent_pipeline(tmp_path):
     match_agent = MatchAgent(profile_manager=pm, db_path=db_file)
     evals = match_agent.evaluate_all_pending_jobs()
     assert len(evals) == 2
-    assert all(e.overall_score >= 70 for e in evals)
-    assert all(e.decision in ["APPLY", "HIGH", "VERY_HIGH"] for e in evals)
+    # Verify non-senior role is QUALIFIED with score >= 70
+    qualified_evals = [e for e in evals if e.decision != "SKIP"]
+    assert len(qualified_evals) == 1
+    assert qualified_evals[0].overall_score >= 70
+    assert qualified_evals[0].decision in ["APPLY", "HIGH", "VERY_HIGH"]
+
+    # Verify senior role is properly filtered to SKIP
+    skipped_evals = [e for e in evals if e.decision == "SKIP"]
+    assert len(skipped_evals) == 1
     
-    # 4. Verify SQLite application states updated to QUALIFIED
+    # 4. Verify SQLite application states updated in DB
     conn = init_db(db_file)
     cursor = conn.cursor()
     cursor.execute("SELECT status FROM applications")
     statuses = [row[0] for row in cursor.fetchall()]
-    assert all(s == "QUALIFIED" for s in statuses)
+    assert "QUALIFIED" in statuses
+    assert "SKIPPED" in statuses
     
     cursor.execute("SELECT COUNT(*) FROM job_matches")
     match_count = cursor.fetchone()[0]
