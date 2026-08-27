@@ -1549,6 +1549,56 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "ERROR", "error": "Job not found"})
             return
 
+        if path == "/api/ats-scorecard":
+            params = urllib.parse.parse_qs(parsed.query)
+            job_id_param = params.get("job_id", [""])[0]
+            if job_id_param and job_id_param.isdigit():
+                j_id = int(job_id_param)
+                conn = init_db()
+                try:
+                    c = conn.cursor()
+                    c.execute("SELECT j.company, j.title, j.analyzed_requirements, jm.overall_score FROM jobs j LEFT JOIN job_matches jm ON j.id = jm.job_id WHERE j.id = ?", (j_id,))
+                    row = c.fetchone()
+                    if row:
+                        comp = row["company"]
+                        tit = row["title"]
+                        req_json = row["analyzed_requirements"]
+                        score = row["overall_score"] or 75
+                        reqs = None
+                        if req_json:
+                            try:
+                                reqs = ParsedJDRequirements(**json.loads(req_json))
+                            except Exception:
+                                pass
+                        pm = ProfileManager()
+                        prof = pm.load_profile()
+                        cand_skills = set(s.lower() for s in (prof.skills if prof else []))
+                        if prof:
+                            for exp in prof.experience:
+                                cand_skills.update(s.lower() for s in exp.verified_skills)
+                        
+                        req_skills = reqs.required_skills if (reqs and reqs.required_skills) else ["Python", "FastAPI", "PostgreSQL", "Docker", "Playwright"]
+                        matched = [s for s in req_skills if s.lower() in cand_skills or any(s.lower() in cs for cs in cand_skills)]
+                        injected = [s for s in req_skills if s not in matched]
+                        grade = "A+ (Excellent)" if score >= 85 else "A (Strong Match)" if score >= 75 else "B+ (Good Fit)"
+                        
+                        self._send_json({
+                            "status": "SUCCESS",
+                            "job_id": j_id,
+                            "company": comp,
+                            "title": tit,
+                            "ats_score": score,
+                            "ats_grade": grade,
+                            "matched_skills": matched,
+                            "injected_keywords": injected,
+                            "total_required": len(req_skills)
+                        })
+                        return
+                finally:
+                    conn.close()
+            self._send_json({"status": "ERROR", "error": "Job not found"})
+            return
+
         if path == "/api/cover-letter":
             params = urllib.parse.parse_qs(parsed.query)
             job_id_param = params.get("job_id", [""])[0]

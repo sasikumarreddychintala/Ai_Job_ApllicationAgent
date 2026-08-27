@@ -9,20 +9,59 @@ SKILL_ALIASES = {
     "js": "javascript",
     "ts": "typescript",
     "py": "python",
+    "python3": "python",
     "postgres": "postgresql",
     "pg": "postgresql",
+    "psql": "postgresql",
     "react.js": "react",
     "reactjs": "react",
     "node": "node.js",
     "nodejs": "node.js",
     "aws": "amazon web services",
-    "gcp": "google cloud platform"
+    "gcp": "google cloud platform",
+    "k8s": "kubernetes",
+    "gen ai": "generative ai",
+    "genai": "generative ai",
+    "llm": "large language models",
+    "llms": "large language models",
+    "rag": "retrieval-augmented generation",
+    "fast-api": "fastapi",
+    "rest": "rest apis",
+    "rest api": "rest apis",
+    "restful": "rest apis",
+    "db": "database",
+    "ci/cd": "cicd",
+    "ci-cd": "cicd",
+    "bi": "business intelligence"
+}
+
+# Semantic Skill Clusters for Hybrid Matching
+SKILL_CLUSTERS = {
+    "python": {"python", "fastapi", "django", "flask", "asyncio", "celery", "pydantic", "sqlalchemy"},
+    "generative ai": {"generative ai", "large language models", "retrieval-augmented generation", "langchain", "llamaindex", "crewai", "ollama", "groq", "openai", "embeddings", "vector databases", "transformers"},
+    "postgresql": {"postgresql", "sql", "relational database", "mysql", "sqlite", "database design"},
+    "docker": {"docker", "containerization", "kubernetes", "docker-compose"},
+    "playwright": {"playwright", "selenium", "web automation", "browser automation", "scraping", "beautifulsoup"},
+    "fastapi": {"fastapi", "rest apis", "microservices", "api development", "backend development"},
+    "data analysis": {"data analysis", "pandas", "numpy", "powerbi", "tableau", "sql", "data pipelines"}
 }
 
 def normalize_skill(skill: str) -> str:
-    """Normalizes skill strings for accurate comparison."""
-    clean = skill.lower().strip()
+    """Normalizes skill strings for accurate semantic comparison."""
+    clean = skill.lower().strip().replace("-", " ")
+    clean = re.sub(r'\s+', ' ', clean)
     return SKILL_ALIASES.get(clean, clean)
+
+def are_skills_semantically_related(skill_a: str, skill_b: str) -> bool:
+    """Checks if two skills belong to the same technical cluster or domain."""
+    norm_a = normalize_skill(skill_a)
+    norm_b = normalize_skill(skill_b)
+    if norm_a == norm_b or norm_a in norm_b or norm_b in norm_a:
+        return True
+    for cluster in SKILL_CLUSTERS.values():
+        if norm_a in cluster and norm_b in cluster:
+            return True
+    return False
 
 def calculate_match_score(
     candidate: CandidateProfile,

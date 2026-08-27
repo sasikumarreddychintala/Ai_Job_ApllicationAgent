@@ -309,17 +309,21 @@ class TelegramInteractiveBot:
                     self.send_message("No evaluated jobs found yet. Run `/search Python Bengaluru` to discover fresh jobs!", target_chat_id=sender_id)
                     return
 
-                msg_lines = ["⭐ *Top 5 Highest Matching Jobs:*\n"]
+                msg_lines = ["⭐ *Top 5 Highest Matching Jobs (ATS Optimized):*\n"]
+                from src.ai.outreach import predict_recruiter_emails
                 for r in rows:
                     jid, comp, tit, loc, src, url, score = r
                     src_label = "Ashby" if "ashby" in src.lower() else "Python.org" if "python_org" in src.lower() else "HN" if "hacker" in src.lower() else src
                     clean_url = url if (url and url.startswith("http") and "hirect.in" not in url) else f"https://www.google.com/search?q={urllib.parse.quote(f'{tit} {comp} jobs {loc}')}"
+                    grade = "A+ (Excellent)" if score >= 85 else "A (Strong Match)" if score >= 75 else "B+ (Good Fit)"
+                    predicted_emails = predict_recruiter_emails(comp)
+                    rec_email = predicted_emails[0] if predicted_emails else f"careers@{comp.lower().replace(' ', '')}.com"
                     msg_lines.append(
                         f"🔹 *[Job ID: #{jid}] {tit}* at *{comp}*\n"
-                        f"   🎯 Match: `{score}%` | 🌐 Source: `{src_label}` | 📍 `{loc}`\n"
+                        f"   🎯 *ATS Match:* `{score}%` ({grade}) | 📍 `{loc}`\n"
                         f"   🔗 [Open Job Application Link]({clean_url})\n"
                         f"   📄 *Resume:* `/resume {jid}` | 🧠 *Interview Prep:* `/prep {jid}`\n"
-                        f"   👤 *Hiring Leads:* `/hiring {jid}` | ✉️ *Cold Email:* `/email {jid} hr@company.com`\n"
+                        f"   👤 *Recruiter:* `{rec_email}` | ✉️ *Send Cold Email:* `/email {jid} {rec_email}`\n"
                     )
                 self.send_message("\n".join(msg_lines), target_chat_id=sender_id)
             finally:
@@ -654,13 +658,12 @@ class TelegramInteractiveBot:
             return
 
         elif cmd == "/email":
-            if len(args) < 2 or not args[0].isdigit() or "@" not in args[1]:
-                self.send_message("Usage: `/email <job_id> <recipient_email>`\nExample: `/email 1 careers@company.com`", target_chat_id=sender_id)
+            if not args or not args[0].isdigit():
+                self.send_message("Usage: `/email <job_id> [recipient_email]`\nExample: `/email 1` or `/email 1 hr@company.com`", target_chat_id=sender_id)
                 return
 
             job_id = int(args[0])
-            to_email = args[1].strip()
-            self.send_message(f"⏳ Compiling tailored PDF resume & cover letter for Job #{job_id}, then sending cold email to *{to_email}*...", target_chat_id=sender_id)
+            to_email = args[1].strip() if len(args) >= 2 and "@" in args[1] else None
 
             def _bg_email():
                 try:
@@ -674,6 +677,14 @@ class TelegramInteractiveBot:
                         return
                     comp, tit, req_json = row
                     conn.close()
+
+                    from src.ai.outreach import predict_recruiter_emails
+                    target_email = to_email
+                    if not target_email:
+                        predicted = predict_recruiter_emails(comp)
+                        target_email = predicted[0] if predicted else f"careers@{comp.lower().replace(' ', '')}.com"
+
+                    self.send_message(f"⏳ Compiling tailored PDF resume & cover letter for Job #{job_id}, then sending cold email to *{target_email}*...", target_chat_id=sender_id)
 
                     from src.agents.resume_agent import ResumeTailorAgent
                     from src.resume.cover_letter import generate_cover_letter_pdf
@@ -696,7 +707,7 @@ class TelegramInteractiveBot:
                     outreach_data = generate_recruiter_outreach(prof, comp, tit, reqs)
 
                     res = email_dispatcher.send_cold_email(
-                        to_email=to_email,
+                        to_email=target_email,
                         subject=outreach_data["cold_email_subject"],
                         body_text=outreach_data["email_body"],
                         resume_pdf_path=Path(pdf_resume) if pdf_resume else None,
@@ -705,7 +716,7 @@ class TelegramInteractiveBot:
                     )
 
                     if res.get("success"):
-                        self.send_message(f"✅ *Cold Email Dispatched!*\n\n📬 *To:* `{to_email}`\n🏢 *Company:* {comp}\n💼 *Role:* {tit}\n📎 *Attachments:* Tailored PDF Resume & Cover Letter\nStatus logged in database.", target_chat_id=sender_id)
+                        self.send_message(f"✅ *Cold Email Dispatched!*\n\n📬 *To:* `{target_email}`\n🏢 *Company:* {comp}\n💼 *Role:* {tit}\n📎 *Attachments:* Tailored PDF Resume & Cover Letter\nStatus logged in database.", target_chat_id=sender_id)
                     else:
                         self.send_message(f"❌ *Failed to send email:* {res.get('error')}", target_chat_id=sender_id)
 

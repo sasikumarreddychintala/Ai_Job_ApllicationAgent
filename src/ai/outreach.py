@@ -1,19 +1,46 @@
-from typing import Dict, Optional
+import re
+from typing import Dict, Optional, List, Any
 from src.resume.validator import CandidateProfile
 from src.ai.schemas import ParsedJDRequirements
 from src.utils.logger import logger
+
+def predict_recruiter_emails(company: str) -> List[str]:
+    """
+    Predicts corporate recruiter and talent acquisition email addresses based on company domain.
+    """
+    clean_comp = re.sub(r'(?i)\b(inc|corp|corporation|technologies|tech|solutions|pvt|ltd|llc|software|systems|labs)\b', '', company).strip()
+    clean_domain = re.sub(r'[^a-zA-Z0-9]', '', clean_comp).lower()
+    if not clean_domain:
+        clean_domain = re.sub(r'[^a-zA-Z0-9]', '', company).lower()
+    
+    tlds = ["com", "in", "ai", "io", "co"]
+    domains = [f"{clean_domain}.com"]
+    if len(clean_domain) <= 8:
+        domains.extend([f"{clean_domain}.in", f"{clean_domain}.ai", f"{clean_domain}.co"])
+    
+    predicted = []
+    for d in domains[:2]:
+        predicted.extend([
+            f"careers@{d}",
+            f"talent@{d}",
+            f"recruiting@{d}",
+            f"hr@{d}",
+            f"jobs@{d}"
+        ])
+    return predicted[:6]
 
 def generate_outreach_messages(
     candidate: CandidateProfile,
     company: str,
     title: str,
     requirements: Optional[ParsedJDRequirements] = None
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     """
     Generates high-converting, personalized cold outreach notes for:
     1. LinkedIn Connection Request (< 300 chars)
     2. Hiring Manager Direct Cold Email (Subject + Body)
     3. Technical Recruiter InMail
+    4. Predicted Recruiter Email Addresses
     """
     c = candidate.contact_info
     full_name = c.full_name
@@ -28,6 +55,7 @@ def generate_outreach_messages(
         matched = ["Python", "FastAPI", "PostgreSQL", "Kafka", "Redis"]
 
     top_tech = ", ".join(matched[:3])
+    predicted_emails = predict_recruiter_emails(company)
 
     # 1. LinkedIn Connection Note (< 300 characters limit)
     li_note = (
@@ -81,6 +109,7 @@ def generate_outreach_messages(
         "email_body": email_body,
         "recruiter_subject": recruiter_subject,
         "recruiter_inmail": recruiter_inmail,
+        "predicted_emails": predicted_emails,
         "company": company,
         "title": title
     }
