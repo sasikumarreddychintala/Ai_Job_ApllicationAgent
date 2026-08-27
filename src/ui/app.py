@@ -401,7 +401,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <button onclick="closeNotifModal()" style="background:transparent;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;">&times;</button>
             </div>
 
-            <div style="display:flex; flex-direction:column; gap:12px;">
+            <form onsubmit="event.preventDefault(); saveNotificationSettings(); return false;" style="display:flex; flex-direction:column; gap:12px;">
                 <div style="background:#090d16; padding:12px; border-radius:8px; border:1px solid var(--border);">
                     <h4 style="margin:0 0 6px 0; color:#38bdf8; font-size:14px;">✈️ Telegram Bot Setup (Free Phone Push Alerts & 2-Way Assistant)</h4>
                     <p style="margin:0 0 8px 0; color:var(--text-muted); font-size:11px;">Create a bot with @BotFather and get your chat ID from @userinfobot</p>
@@ -454,10 +454,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 </div>
 
                 <div style="display:flex; justify-content:space-between; gap:10px; margin-top:8px;">
-                    <button class="btn btn-outline" style="font-size:12px;" onclick="sendTestAlert()">🧪 Send Test Alert</button>
-                    <button class="btn btn-green" style="font-size:12px;" onclick="saveNotificationSettings()">💾 Save Credentials</button>
+                    <button type="button" class="btn btn-outline" style="font-size:12px;" onclick="sendTestAlert()">🧪 Send Test Alert</button>
+                    <button type="submit" class="btn btn-green" style="font-size:12px;">💾 Save Credentials</button>
                 </div>
-            </div>
+            </form>
         </div>
     </div>
 
@@ -1404,6 +1404,11 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
+        if path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
+
         if path in ("/healthz", "/ping", "/api/health"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -1470,9 +1475,10 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/logs":
             # Server-Sent Events endpoint — keeps connection alive and streams log lines
             self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-transform")
             self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             # Create a per-client queue and register it
@@ -1480,15 +1486,15 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             with _sse_lock:
                 _sse_clients.append(client_q)
             try:
-                # Send a heartbeat comment every 20s to keep the connection alive
+                # Send a keepalive comment every 10s to prevent cloud proxy idle disconnects
                 while True:
                     try:
-                        data = client_q.get(timeout=20)
+                        data = client_q.get(timeout=10)
                         self.wfile.write(data.encode("utf-8"))
                         self.wfile.flush()
                     except queue.Empty:
                         # Send SSE keep-alive comment
-                        self.wfile.write(b": heartbeat\n\n")
+                        self.wfile.write(b": keepalive\n\n")
                         self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                 pass
