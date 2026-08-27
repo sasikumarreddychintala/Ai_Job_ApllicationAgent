@@ -101,7 +101,8 @@ class OllamaClient:
         temperature: float = 0.1
     ) -> T:
         """Calls Groq Cloud API for ultra-fast Llama 3.3 70B inference with schema validation."""
-        groq_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile")
+        clean_key = api_key.strip().strip("'\"")
+        groq_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile").strip().strip("'\"")
         url = "https://api.groq.com/openai/v1/chat/completions"
         payload = {
             "model": groq_model,
@@ -117,7 +118,8 @@ class OllamaClient:
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key.strip()}"
+                "User-Agent": "Mozilla/5.0 (compatible; JobAgent/2.0)",
+                "Authorization": f"Bearer {clean_key}"
             }
         )
         with urllib.request.urlopen(req, timeout=25) as resp:
@@ -137,8 +139,12 @@ class OllamaClient:
         temperature: float = 0.1
     ) -> T:
         """Calls Google Gemini Cloud API with structured JSON output and schema validation."""
-        gemini_model = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={api_key.strip()}"
+        clean_key = api_key.strip().strip("'\"")
+        gemini_model = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash").strip().strip("'\"")
+        if not gemini_model.startswith("gemini-"):
+            gemini_model = "gemini-1.5-flash"
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={clean_key}"
         payload = {
             "contents": [
                 {
@@ -155,7 +161,10 @@ class OllamaClient:
         req = urllib.request.Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (compatible; JobAgent/2.0)"
+            }
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
             if resp.status == 200:
@@ -163,7 +172,7 @@ class OllamaClient:
                 text_content = data["candidates"][0]["content"]["parts"][0]["text"]
                 parsed = json.loads(text_content)
                 validated = response_schema(**parsed)
-                logger.info(f" 💎 [Google Gemini 1.5 Flash] Successfully generated {response_schema.__name__} in 1.2s!")
+                logger.info(f" 💎 [Google Gemini {gemini_model}] Successfully generated {response_schema.__name__} in 1.2s!")
                 return validated
 
     def is_online(self) -> bool:
