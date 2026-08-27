@@ -92,14 +92,34 @@ class EmailDispatcher:
                     msg.attach(part)
                     logger.info(f" Attached Cover Letter: {Path(cover_letter_pdf_path).name}")
 
-            # Connect and send via TLS
+            # Connect and send via TLS (Port 587) or SSL (Port 465)
             logger.info(f" Connecting to SMTP server {self.smtp_server}:{self.smtp_port}...")
-            with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=15) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(self.smtp_user, self.smtp_password)
-                server.sendmail(self.smtp_user, [to_email], msg.as_string())
+            sent_ok = False
+            last_err = None
+
+            # Attempt 1: Port 587 STARTTLS
+            try:
+                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=15) as server:
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+                    server.login(self.smtp_user, self.smtp_password)
+                    server.sendmail(self.smtp_user, [to_email], msg.as_string())
+                    sent_ok = True
+            except Exception as e587:
+                last_err = e587
+                logger.warning(f"Port {self.smtp_port} STARTTLS notice: {e587}. Trying Port 465 SSL fallback...")
+                try:
+                    # Attempt 2: Port 465 Direct SSL
+                    with smtplib.SMTP_SSL(self.smtp_server, 465, timeout=15) as server_ssl:
+                        server_ssl.login(self.smtp_user, self.smtp_password)
+                        server_ssl.sendmail(self.smtp_user, [to_email], msg.as_string())
+                        sent_ok = True
+                except Exception as e465:
+                    last_err = e465
+
+            if not sent_ok:
+                raise last_err or Exception("Failed to connect to SMTP server.")
 
             logger.info(f"[bold green] Direct cold email dispatched successfully to {to_email}![/bold green]")
 
