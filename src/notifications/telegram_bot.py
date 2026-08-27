@@ -55,8 +55,8 @@ class TelegramInteractiveBot:
         self._running = False
         logger.info("[Telegram Bot] Interactive Assistant stopped.")
 
-    def send_message(self, text: str, target_chat_id: Optional[str] = None) -> bool:
-        """Sends markdown formatted text to Telegram chat."""
+    def send_message(self, text: str, target_chat_id: Optional[str] = None, reply_markup: Optional[Dict[str, Any]] = None) -> bool:
+        """Sends markdown formatted text to Telegram chat with optional interactive keyboard buttons."""
         cid = target_chat_id or self.chat_id
         if not self.bot_token or not cid:
             return False
@@ -68,6 +68,9 @@ class TelegramInteractiveBot:
             "parse_mode": "Markdown",
             "disable_web_page_preview": True
         }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
 
@@ -205,37 +208,60 @@ class TelegramInteractiveBot:
             self.send_message("⛔ Unauthorized. This bot is private to its owner.", target_chat_id=sender_id)
             return
 
-        cmd = text.split()[0].lower()
-        args = text.split()[1:]
+        # Quick Interactive Keyboard Text Aliases
+        btn_map = {
+            "🔥 top matches": "/top",
+            "🤖 ai / genai": "/ai",
+            "🐍 python jobs": "/swe",
+            "📊 data analyst": "/data",
+            "🌱 fresher (0-1 yr)": "/fresher",
+            "💼 junior (1-2 yrs)": "/junior",
+            "🚀 auto-apply": "/autoapply",
+            "⏰ follow-ups": "/followups",
+            "📊 live stats": "/stats"
+        }
+        clean_txt = text.strip().lower()
+        if clean_txt in btn_map:
+            cmd = btn_map[clean_txt]
+            args = []
+        else:
+            cmd = text.split()[0].lower()
+            args = text.split()[1:]
 
         logger.info(f"[Telegram Bot] Received command '{text}' from {sender_name}")
+
+        keyboard_markup = {
+            "keyboard": [
+                [{"text": "🔥 Top Matches"}, {"text": "🤖 AI / GenAI"}],
+                [{"text": "🐍 Python Jobs"}, {"text": "📊 Data Analyst"}],
+                [{"text": "🌱 Fresher (0-1 Yr)"}, {"text": "💼 Junior (1-2 Yrs)"}],
+                [{"text": "🚀 Auto-Apply"}, {"text": "⏰ Follow-ups"}],
+                [{"text": "📊 Live Stats"}, {"text": "⭐ /top"}]
+            ],
+            "resize_keyboard": True,
+            "is_persistent": True
+        }
 
         if cmd in ("/start", "/help"):
             help_msg = (
                 f"👋 *Hello {sender_name}! I am your AI Job Application Assistant.*\n\n"
-                f"Here is what you can do from your phone:\n\n"
-                f"🌱 `/fresher [location]`\n"
-                f"↳ Searches high-priority **Fresher & 0–1 Year** openings across 10+ platforms!\n\n"
-                f"🚀 `/junior [location]`\n"
-                f"↳ Searches **1–2 Years Experience & Associate** roles.\n\n"
-                f"🔍 `/search <query> [location]`\n"
-                f"↳ Custom search targeting 0–2 years openings (e.g. `/search AI Engineer Bengaluru`).\n\n"
-                f"⭐ `/top`\n"
-                f"↳ Lists your Top 5 highest matching qualified jobs.\n\n"
-                f"📊 `/stats`\n"
-                f"↳ View total discovered, qualified, and submitted job counts.\n\n"
-                f"📄 `/resume <job_id>`\n"
-                f"↳ Compiles & sends the tailored PDF resume for that job to this chat!\n\n"
-                f"📝 `/letter <job_id>`\n"
-                f"↳ Compiles & sends the tailored PDF cover letter!\n\n"
-                f"✉️ `/outreach <job_id>`\n"
-                f"↳ Generates ready-to-copy LinkedIn pitch & cold email for the Hiring Manager.\n\n"
-                f"🧠 `/prep <job_id>`\n"
-                f"↳ Predicts Top 5 technical interview questions & STAR answers.\n\n"
-                f"⏰ `/schedule [time]`\n"
-                f"↳ Check or configure daily morning auto-pilot time."
+                f"Here is what you can do with 1-Tap from your phone:\n\n"
+                f"🌱 `/fresher [location]` ↳ Fresher & 0–1 Year openings\n"
+                f"💼 `/junior [location]` ↳ 1–2 Years Experience roles\n"
+                f"🤖 `/ai [location]` ↳ AI, GenAI & LLM Developer roles\n"
+                f"📊 `/data [location]` ↳ Data Analyst & BI roles\n"
+                f"⭐ `/top` ↳ Top 5 highest matching qualified jobs\n"
+                f"📄 `/resume <job_id>` ↳ Compiles & sends tailored PDF resume\n"
+                f"✉️ `/email <job_id> hr@company.com` ↳ 1-Click direct cold email\n"
+                f"🤖 `/apply <job_id>` ↳ Stealth auto-apply in browser\n"
+                f"🚀 `/autoapply` ↳ Auto-apply to all qualified matches (≥80%)\n"
+                f"🧠 `/prep <job_id>` ↳ Technical interview questions & STAR answers\n"
+                f"👤 `/hiring <job_id>` ↳ Find Engineering Managers on LinkedIn\n"
+                f"⏰ `/followups` ↳ 7-day polite recruiter follow-ups\n"
+                f"📊 `/stats` ↳ Live pipeline discovery & submission metrics\n\n"
+                f"_Tap any of the quick buttons below on your phone keyboard!_"
             )
-            self.send_message(help_msg, target_chat_id=sender_id)
+            self.send_message(help_msg, target_chat_id=sender_id, reply_markup=keyboard_markup)
             return
 
         elif cmd == "/stats":
