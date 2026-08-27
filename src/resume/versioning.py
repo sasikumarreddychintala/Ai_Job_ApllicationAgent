@@ -112,15 +112,17 @@ def generate_pdf_resume(
     story.append(Paragraph(c.full_name, name_style))
     story.append(Spacer(1, 4))
 
-    contact_parts = [c.email]
+    contact_parts = [f'<a href="mailto:{c.email}" color="#0284c7"><u>{c.email}</u></a>']
     if c.phone:
         contact_parts.append(c.phone)
     if c.location:
         contact_parts.append(c.location)
     if c.linkedin:
-        contact_parts.append(f'LinkedIn: {c.linkedin}')
+        contact_parts.append(f'<a href="{c.linkedin}" color="#0284c7"><u>LinkedIn</u></a>')
     if c.portfolio:
-        contact_parts.append(f'Portfolio: {c.portfolio}')
+        contact_parts.append(f'<a href="{c.portfolio}" color="#0284c7"><u>Portfolio</u></a>')
+    if getattr(c, "github", ""):
+        contact_parts.append(f'<a href="{c.github}" color="#0284c7"><u>GitHub</u></a>')
 
     story.append(Paragraph(" &nbsp;|&nbsp; ".join(contact_parts), contact_style))
     story.append(Spacer(1, 4))
