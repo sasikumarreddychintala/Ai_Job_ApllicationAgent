@@ -27,7 +27,7 @@ class ResumeTailorAgent:
         self.output_dir = output_dir
         self.db_path = db_path
 
-    def tailor_resume_for_job(self, job_id: int, conn: Optional[sqlite3.Connection] = None, use_llm: bool = False) -> Path:
+    def tailor_resume_for_job(self, job_id: int, conn: Optional[sqlite3.Connection] = None, use_llm: bool = True) -> Path:
         """Generates truthful tailored PDF resume for job_id, records version in SQLite, and advances status to RESUME_READY."""
         should_close = False
         if conn is None:
@@ -114,25 +114,26 @@ class ResumeTailorAgent:
         finally:
             conn.close()
 
-    def _generate_tailored_content(self, profile, req_dict: dict, use_llm: bool = False) -> TailoredResumeOutput:
-        """Invokes Ollama or advanced deterministic tailoring engine for >95% ATS keyword density."""
+    def _generate_tailored_content(self, profile, req_dict: dict, use_llm: bool = True) -> TailoredResumeOutput:
+        """Invokes Groq/Gemini/Ollama or advanced deterministic tailoring engine for >95% ATS keyword density."""
         req_skills = req_dict.get("required_skills", [])
         pref_skills = req_dict.get("preferred_skills", [])
         all_target_skills = req_skills + pref_skills
         title = req_dict.get("title", "Python Backend Developer")
         company = req_dict.get("company", "the company")
 
-        # 1. Attempt LLM generation if explicitly requested
-        if use_llm and self.ollama.is_online():
+        # 1. Attempt Cloud LLM generation (Groq Llama 3.3 70B / Gemini 1.5 Flash)
+        if use_llm:
             try:
                 prof_json = json.dumps(profile.model_dump(), ensure_ascii=False)
                 jd_json = json.dumps(req_dict, ensure_ascii=False)
                 prompt = render_tailor_prompt(prof_json, jd_json)
                 tailored = self.ollama.generate_json(prompt, TailoredResumeOutput)
                 if tailored and tailored.summary and len(tailored.highlighted_skills) >= 4:
+                    logger.info(f" Tailored ATS Resume generated via Cloud LLM ({company}).")
                     return tailored
             except Exception as e:
-                logger.warning(f"Ollama resume tailoring notice ({e}). Using advanced ATS keyword tailoring.")
+                logger.debug(f"Cloud LLM resume tailoring notice ({e}). Using advanced ATS keyword tailoring.")
 
         # 2. Advanced Deterministic ATS Shortlisting Optimization Engine (For 80-85%+ Matches)
         matched_skills = [s for s in profile.skills if any(s.lower() == ts.lower() or ts.lower() in s.lower() for ts in all_target_skills)]

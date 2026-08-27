@@ -109,8 +109,24 @@ class JDAgent:
         default_company: str,
         default_loc: str
     ) -> ParsedJDRequirements:
-        """High-speed requirement extraction with comprehensive ATS keyword detection."""
-        # Detect extensive technical skills
+        """High-speed requirement extraction with Cloud AI (Groq/Gemini) and ATS fallback."""
+        # 1. Try Cloud AI / LLM extraction (Groq Llama 3.3 70B / Gemini 1.5 Flash)
+        try:
+            prompt = render_jd_prompt(raw_jd)
+            parsed = self.ollama.generate_json(prompt, ParsedJDRequirements)
+            if parsed and parsed.required_skills:
+                if not parsed.title:
+                    parsed.title = default_title
+                if not parsed.company:
+                    parsed.company = default_company
+                if not parsed.location:
+                    parsed.location = default_loc
+                logger.info(f" Extracted {len(parsed.required_skills)} skills via Cloud AI Engine ({default_company}).")
+                return parsed
+        except Exception as e:
+            logger.debug(f"AI JD extraction notice ({e}). Using deterministic rule analyzer.")
+
+        # 2. Deterministic Fallback
         known_skills = [
             "Python", "FastAPI", "Django", "Flask", "PostgreSQL", "MySQL", "SQLAlchemy",
             "Redis", "Kafka", "Docker", "Kubernetes", "AWS", "REST", "GraphQL",
