@@ -297,81 +297,87 @@ class PostgresConnectionWrapper:
         else:
             self.rollback()
 
-def _build_postgres_conn(database_url: str):
-    """Builds a robust psycopg2 connection to Supabase with timeout settings."""
+# ─────────────────────────────────────────────────────────────────────────────
+# PostgreSQL helpers — Transaction Mode pooler (port 6543)
+# Each caller gets its OWN connection. Supabase Transaction Mode supports
+# hundreds of short-lived concurrent connections, so no singleton is needed.
+# A singleton shared across 16+ threads causes "connection already closed"
+# because one thread's commit/rollback can corrupt the shared state.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_CONVERTED_DB_URL: str = ""   # Cached once so the port-switch log fires only once
+_DB_INITIALIZED = False        # DDL migration flag — runs once per process
+_DDL_LOCK = None               # Serialises the one-time schema migration
+
+def _get_ddl_lock():
+    global _DDL_LOCK
+    if _DDL_LOCK is None:
+        import threading
+        _DDL_LOCK = threading.Lock()
+    return _DDL_LOCK
+
+def _get_pg_url() -> str:
+    """Returns the Transaction-Mode Supabase URL, switching port once if needed."""
+    global _CONVERTED_DB_URL
+    if _CONVERTED_DB_URL:
+        return _CONVERTED_DB_URL
+    raw = (getattr(settings, "DATABASE_URL", "") or "").strip()
+    if ":5432/" in raw:
+        _CONVERTED_DB_URL = raw.replace(":5432/", ":6543/")
+        logger.info("🔀 Supabase pooler switched to Transaction Mode (port 6543) — unlimited concurrency.")
+    else:
+        _CONVERTED_DB_URL = raw
+    return _CONVERTED_DB_URL
+
+def _new_pg_conn() -> object:
+    """Opens a fresh psycopg2 connection to Supabase Transaction Mode pooler."""
     import psycopg2
-    # Switch to Transaction Mode port (6543) automatically if user is on Session Mode (5432)
-    # Transaction mode: unlimited concurrent connections vs Session mode: max 15
-    tx_url = database_url.strip()
-    if ":5432/" in tx_url:
-        tx_url = tx_url.replace(":5432/", ":6543/")
-        logger.info("🔀 Auto-switched Supabase pooler to Transaction Mode (port 6543) for unlimited concurrency.")
-    raw_conn = psycopg2.connect(
-        tx_url,
+    return psycopg2.connect(
+        _get_pg_url(),
         connect_timeout=15,
         options="-c statement_timeout=30000"
     )
-    raw_conn.autocommit = False
-    return raw_conn
-
-# Singleton connection — reuse ONE connection across all threads to avoid pool exhaustion
-_PG_SINGLETON: object = None
-_DB_INITIALIZED = False
-_pg_lock = None
-
-def _get_pg_lock():
-    global _pg_lock
-    if _pg_lock is None:
-        import threading
-        _pg_lock = threading.Lock()
-    return _pg_lock
 
 def init_db(db_path: Path = settings.DATABASE_PATH):
-    """Initializes database connection and schema tables (SQLite or PostgreSQL).
+    """Returns a database connection (PostgreSQL or SQLite).
 
-    PostgreSQL: returns the process-wide singleton PostgresConnectionWrapper.
-    SQLite: opens a per-call WAL connection (lightweight, thread-safe).
+    PostgreSQL path: each call gets its OWN connection from the Transaction Mode
+    pooler. DDL schema migration runs exactly once per process (thread-safe).
+
+    SQLite path: per-call WAL connection — lightweight and thread-safe.
     """
-    global _PG_SINGLETON, _DB_INITIALIZED
+    global _DB_INITIALIZED
 
     db_type = getattr(settings, "DATABASE_TYPE", "sqlite")
-    db_url = getattr(settings, "DATABASE_URL", "") or ""
+    db_url  = getattr(settings, "DATABASE_URL", "") or ""
 
     if db_type == "postgres" and db_url.strip():
-        with _get_pg_lock():
-            # Re-use existing connection if still alive
-            if _PG_SINGLETON is not None:
-                try:
-                    _PG_SINGLETON._conn.cursor().execute("SELECT 1")
-                    return _PG_SINGLETON
-                except Exception:
-                    logger.info("PostgreSQL singleton connection dropped — reconnecting...")
-                    _PG_SINGLETON = None
-
-            for attempt in range(1, 4):
-                try:
-                    raw_conn = _build_postgres_conn(db_url.strip())
+        for attempt in range(1, 4):
+            try:
+                raw_conn = _new_pg_conn()
+                # Run DDL exactly once across all threads
+                with _get_ddl_lock():
                     if not _DB_INITIALIZED:
+                        statements = [s.strip() for s in POSTGRES_SCHEMA_SQL.split(";") if s.strip()]
                         with raw_conn.cursor() as cur:
-                            statements = [s.strip() for s in POSTGRES_SCHEMA_SQL.split(";") if s.strip()]
                             for stmt in statements:
                                 try:
                                     cur.execute(stmt)
                                 except Exception:
-                                    raw_conn.rollback()  # Reset txn after each failed DDL
+                                    raw_conn.rollback()   # isolate failed DDL
                         raw_conn.commit()
-                        logger.info("🟢 Supabase PostgreSQL connected and schema ready!")
+                        logger.info("🟢 Supabase PostgreSQL connected — schema ready!")
                         _DB_INITIALIZED = True
-                    _PG_SINGLETON = PostgresConnectionWrapper(raw_conn)
-                    return _PG_SINGLETON
-                except Exception as e:
-                    logger.warning(f"PostgreSQL attempt {attempt}/3 failed: {e}")
-                    if attempt == 3:
-                        logger.error("All PostgreSQL attempts exhausted. Falling back to SQLite database...")
-                    else:
-                        import time
-                        time.sleep(2 ** (attempt - 1))  # Exponential backoff: 1s, 2s
+                return PostgresConnectionWrapper(raw_conn)
+            except Exception as e:
+                logger.warning(f"PostgreSQL attempt {attempt}/3 failed: {e}")
+                if attempt == 3:
+                    logger.error("All PostgreSQL attempts exhausted — falling back to SQLite.")
+                else:
+                    import time
+                    time.sleep(2 ** (attempt - 1))   # 1 s, 2 s
 
+    # ── SQLite fallback ────────────────────────────────────────────────────────
     try:
         conn = sqlite3.connect(db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
@@ -381,7 +387,7 @@ def init_db(db_path: Path = settings.DATABASE_PATH):
             conn.executescript(SCHEMA_SQL)
         return conn
     except Exception as e:
-        logger.error(f"Failed to initialize SQLite database at {db_path}: {e}")
+        logger.error(f"Failed to initialise SQLite at {db_path}: {e}")
         raise e
 
 if __name__ == "__main__":
