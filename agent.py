@@ -219,14 +219,26 @@ def main():
 
     if args.login:
         logger.info("[bold cyan] Starting Interactive Persistent Login Setup Mode...[/bold cyan]")
-        logger.info("Opening browser window so you can log into LinkedIn, Naukri, Indeed, and Google.")
+        logger.info("Opening browser window with tabs for LinkedIn, Naukri, and Indeed.")
         from src.automation.browser import BrowserManager
         with BrowserManager(headless=False) as page:
+            ctx = page.context
             try:
                 page.goto("https://www.linkedin.com/login")
             except Exception:
                 pass
-            logger.info("[bold green] Browser is open! Log into all your accounts now. When finished, simply close the browser window or press Enter in this terminal.[/bold green]")
+            try:
+                p2 = ctx.new_page()
+                p2.goto("https://www.naukri.com/nlogin/login")
+            except Exception:
+                pass
+            try:
+                p3 = ctx.new_page()
+                p3.goto("https://secure.indeed.com/auth")
+            except Exception:
+                pass
+            logger.info("[bold green] Browser is open with tabs for LinkedIn, Naukri, and Indeed! Log into your accounts now.[/bold green]")
+            logger.info("[bold green] When finished, simply close the browser window or press Enter in this terminal.[/bold green]")
             try:
                 input()
             except Exception:
