@@ -146,26 +146,24 @@ class JobFinder:
 
         try:
             # Parallel scraping across all source adapters with 16 high-performance threads
-            all_raw_listings = []
+            # Stream & persist jobs progressively as each adapter completes
             with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
                 futures = [executor.submit(_fetch_from_adapter, ad) for ad in self.adapters]
                 for future in concurrent.futures.as_completed(futures):
-                    all_raw_listings.extend(future.result())
+                    try:
+                        raw_batch = future.result()
+                        for raw_job in raw_batch:
+                            norm_job = normalize_job_listing(raw_job)
+                            # Deduplication check
+                            if is_job_duplicate(norm_job.fingerprint, norm_job.url, conn):
+                                continue
+                            # Save new unique job to database immediately
+                            self._save_job_to_db(conn, norm_job)
+                            discovered_new.append(norm_job)
+                    except Exception as e:
+                        logger.debug(f"Error processing adapter batch: {e}")
 
-            logger.info(f" Aggregated total of {len(all_raw_listings)} listings across all job boards. Deduplicating...")
-
-            for raw_job in all_raw_listings:
-                norm_job = normalize_job_listing(raw_job)
-
-                # Deduplication check
-                if is_job_duplicate(norm_job.fingerprint, norm_job.url, conn):
-                    continue
-
-                # Save new unique job to SQLite
-                self._save_job_to_db(conn, norm_job)
-                discovered_new.append(norm_job)
-
-            logger.info(f" Job discovery complete. {len(discovered_new)} new unique jobs stored in SQLite.")
+            logger.info(f" Job discovery complete. {len(discovered_new)} new unique jobs stored.")
             return discovered_new
         finally:
             conn.close()
