@@ -1,14 +1,11 @@
 services:
   - type: web
     name: sasi-job-application-agent
-    env: python
+    env: docker
     region: oregon
     plan: free
-    buildCommand: pip install -U pip setuptools wheel && pip install -r requirements.txt && playwright install --with-deps chromium
-    startCommand: python agent.py --ui --port $PORT
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.9
       - key: PORT
         value: 8000
       - key: GROQ_API_KEY

@@ -51,4 +51,4 @@ RUN mkdir -p data/logs data/tailored_resumes data/master_resume
 EXPOSE 8000
 
 # Default command to run the full application (Web UI + Multi-Agent Engine + Telegram Bot)
-CMD ["python", "agent.py", "--ui", "--port", "8000"]
+CMD ["sh", "-c", "python agent.py --ui --port ${PORT:-8000}"]
