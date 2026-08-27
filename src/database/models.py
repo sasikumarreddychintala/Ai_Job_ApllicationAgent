@@ -296,7 +296,6 @@ class PostgresConnectionWrapper:
             self.commit()
         else:
             self.rollback()
-        self.close()
 
 _DB_INITIALIZED = False
 
