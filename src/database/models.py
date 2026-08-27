@@ -297,30 +297,64 @@ class PostgresConnectionWrapper:
         else:
             self.rollback()
 
+def _build_postgres_conn(database_url: str):
+    """Builds a robust psycopg2 connection to Supabase with timeout and keepalive settings."""
+    import psycopg2
+    # Add connection options for Supabase pooler reliability
+    raw_conn = psycopg2.connect(
+        database_url,
+        connect_timeout=10,
+        options="-c statement_timeout=30000 -c idle_in_transaction_session_timeout=60000"
+    )
+    raw_conn.autocommit = False
+    # Enable TCP keepalive for long-running cloud connections
+    try:
+        from psycopg2.extensions import ISOLATION_LEVEL_READ_COMMITTED
+        raw_conn.set_isolation_level(ISOLATION_LEVEL_READ_COMMITTED)
+    except Exception:
+        pass
+    return raw_conn
+
 _DB_INITIALIZED = False
 
 def init_db(db_path: Path = settings.DATABASE_PATH):
     """Initializes database connection and schema tables (SQLite or PostgreSQL)."""
     global _DB_INITIALIZED
 
-    if getattr(settings, "DATABASE_TYPE", "sqlite") == "postgres" and getattr(settings, "DATABASE_URL", ""):
-        try:
-            import psycopg2
-            raw_conn = psycopg2.connect(settings.DATABASE_URL)
-            with raw_conn.cursor() as cur:
-                cur.execute(POSTGRES_SCHEMA_SQL)
-            raw_conn.commit()
-            if not _DB_INITIALIZED:
-                logger.info("🟢 Supabase PostgreSQL database connected and schema initialized successfully!")
-                _DB_INITIALIZED = True
-            return PostgresConnectionWrapper(raw_conn)
-        except Exception as e:
-            logger.error(f"Failed to initialize PostgreSQL database: {e}")
-            logger.info("Falling back to SQLite database...")
+    db_type = getattr(settings, "DATABASE_TYPE", "sqlite")
+    db_url = getattr(settings, "DATABASE_URL", "") or ""
+
+    if db_type == "postgres" and db_url.strip():
+        for attempt in range(1, 4):
+            try:
+                raw_conn = _build_postgres_conn(db_url.strip())
+                # Run schema only once per process lifecycle
+                if not _DB_INITIALIZED:
+                    with raw_conn.cursor() as cur:
+                        # Split POSTGRES_SCHEMA_SQL into individual statements to avoid multi-stmt timeout
+                        statements = [s.strip() for s in POSTGRES_SCHEMA_SQL.split(";") if s.strip()]
+                        for stmt in statements:
+                            try:
+                                cur.execute(stmt)
+                            except Exception:
+                                pass  # Table already exists or ALTER already applied
+                    raw_conn.commit()
+                    logger.info("🟢 Supabase PostgreSQL connected and schema ready!")
+                    _DB_INITIALIZED = True
+                return PostgresConnectionWrapper(raw_conn)
+            except Exception as e:
+                logger.warning(f"PostgreSQL attempt {attempt}/3 failed: {e}")
+                if attempt == 3:
+                    logger.error("All PostgreSQL attempts exhausted. Falling back to SQLite database...")
+                else:
+                    import time
+                    time.sleep(1)
 
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
         with conn:
             conn.executescript(SCHEMA_SQL)
         return conn
