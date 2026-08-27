@@ -122,6 +122,26 @@ class ResumeTailorAgent:
         title = req_dict.get("title", "Python Backend Developer")
         company = req_dict.get("company", "the company")
 
+        # Custom experience alignment (configured for Sasi; transparent fallback for other users)
+        tailored_period = None
+        is_custom_user = getattr(settings, "CUSTOM_EXPERIENCE_ALIGNMENT", True) and (
+            "sasi" in profile.contact_info.full_name.lower() or "chintala" in profile.contact_info.full_name.lower()
+        )
+
+        min_exp = req_dict.get("min_years_experience", 0)
+        req_text = f"{title} {' '.join(all_target_skills)} {json.dumps(req_dict)}".lower()
+
+        if is_custom_user:
+            has_strict_2yrs = (
+                min_exp == 2
+                or any(k in req_text for k in ["2+ years", "2+ yrs", "2 years applied experience", "2 years experience", "2 yrs experience", "minimum 2 years", "min 2 years", "at least 2 years", "2 to 3 years", "2-3 years"])
+            ) and not any(k in req_text for k in ["0-2", "0 to 2", "0-1", "0 to 1", "0-3", "0 to 3", "fresher", "entry level", "graduate"])
+
+            if has_strict_2yrs:
+                tailored_period = "Jul 2024 - Present"
+            else:
+                tailored_period = "Jul 2025 - Present"
+
         # 1. Attempt Cloud LLM generation (Groq Llama 3.3 70B / Gemini 1.5 Flash)
         if use_llm:
             try:
@@ -130,7 +150,8 @@ class ResumeTailorAgent:
                 prompt = render_tailor_prompt(prof_json, jd_json)
                 tailored = self.ollama.generate_json(prompt, TailoredResumeOutput)
                 if tailored and tailored.summary and len(tailored.highlighted_skills) >= 4:
-                    logger.info(f" Tailored ATS Resume generated via Cloud LLM ({company}).")
+                    tailored.tailored_period = tailored_period
+                    logger.info(f" Tailored ATS Resume generated via Cloud LLM ({company}). Period: {tailored_period}")
                     return tailored
             except Exception as e:
                 logger.debug(f"Cloud LLM resume tailoring notice ({e}). Using advanced ATS keyword tailoring.")
@@ -139,12 +160,11 @@ class ResumeTailorAgent:
         matched_skills = [s for s in profile.skills if any(s.lower() == ts.lower() or ts.lower() in s.lower() for ts in all_target_skills)]
         
         # Domain & Nuance detection
-        req_str = f"{title} {' '.join(all_target_skills)} {json.dumps(req_dict)}".lower()
-        is_ai = any(k in req_str for k in ["genai", "llm", "langchain", "agent", "prompt engineering", "nlp", "rag", "pytorch", "machine learning", "ml"])
-        is_data = any(k in req_str for k in ["data analyst", "data engineer", "tableau", "powerbi", "dashboard", "business intelligence"])
-        is_analytics_platform = any(k in req_str for k in ["analytics", "quantitative", "traders", "quants", "analytics platform", "large data sets", "data analysis", "pandas", "numpy"])
-        has_ai_dev_tools = any(k in req_str for k in ["ai coding", "ai-assisted", "ai assist", "sdlc", "automated testing", "unit test", "code quality"])
-        is_kafka_streaming = any(k in req_str for k in ["kafka", "event processing", "reactive", "streaming", "event-driven", "messaging"])
+        is_ai = any(k in req_text for k in ["genai", "llm", "langchain", "agent", "prompt engineering", "nlp", "rag", "pytorch", "machine learning", "ml"])
+        is_data = any(k in req_text for k in ["data analyst", "data engineer", "tableau", "powerbi", "dashboard", "business intelligence"])
+        is_analytics_platform = any(k in req_text for k in ["analytics", "quantitative", "traders", "quants", "analytics platform", "large data sets", "data analysis", "pandas", "numpy"])
+        has_ai_dev_tools = any(k in req_text for k in ["ai coding", "ai-assisted", "ai assist", "sdlc", "automated testing", "unit test", "code quality"])
+        is_kafka_streaming = any(k in req_text for k in ["kafka", "event processing", "reactive", "streaming", "event-driven", "messaging"])
 
         # Prioritize relevant technical skills for this role
         prioritized_skills = list(matched_skills)
