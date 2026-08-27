@@ -13,7 +13,7 @@ def test_pilot_runner_dry_run_and_live(tmp_path):
     
     dummy_html = Path(__file__).resolve().parent / "browser" / "dummy_app.html"
     assert dummy_html.exists()
-    dummy_url = f"file:///{str(dummy_html).replace('\\', '/')}"
+    dummy_url = dummy_html.as_uri()
 
     # Setup Candidate Profile
     pm = ProfileManager(profile_path=prof_file, master_dir=master_dir)

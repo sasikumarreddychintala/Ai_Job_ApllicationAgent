@@ -18,6 +18,8 @@ from src.agents.jd_agent import JDAgent
 from src.agents.match_agent import MatchAgent
 from src.agents.resume_agent import ResumeTailorAgent
 from src.agents.orchestrator import ApplicationOrchestrator
+import re
+from src.ai.schemas import ParsedJDRequirements
 from src.database.models import init_db
 
 # --- Live Activity Log Stream (SSE) ---

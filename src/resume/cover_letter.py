@@ -137,7 +137,7 @@ def generate_cover_letter_pdf(
     paragraphs = raw_text.split("\n\n")
     # Body starts from "Dear Hiring Manager," onwards
     for p in paragraphs:
-        if any(p.startswith(prefix) for prefix in [date_str, "Hiring Team", company, "Dear", "Sincerely,", full_name if 'full_name' in locals() else '']):
+        if any(p.startswith(prefix) for prefix in [date_str, "Hiring Team", company, "Dear", "Sincerely,", c.full_name]):
             if p.startswith("Dear"):
                 story.append(Paragraph(f"<b>{p}</b>", body_style))
             elif p.startswith("Sincerely,"):

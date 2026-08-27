@@ -40,7 +40,7 @@ def test_end_to_end_dry_run_pipeline(tmp_path, monkeypatch):
     
     dummy_html = Path(__file__).resolve().parent.parent / "browser" / "dummy_app.html"
     assert dummy_html.exists()
-    dummy_url = f"file:///{str(dummy_html).replace('\\', '/')}"
+    dummy_url = dummy_html.as_uri()
 
     # Force DRY_RUN = True
     monkeypatch.setattr(settings, "DRY_RUN", True)

@@ -87,6 +87,7 @@ class TelegramInteractiveBot:
         if not self.bot_token or not cid or not file_path.exists():
             return False
 
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendDocument"
         for attempt in range(2):
             try:
                 import requests

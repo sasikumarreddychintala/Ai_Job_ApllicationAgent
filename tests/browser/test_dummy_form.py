@@ -30,7 +30,7 @@ def test_dummy_form_filling(tmp_path):
     
     try:
         # Navigate to local file URL
-        file_url = f"file:///{str(dummy_html_path).replace('\\', '/')}"
+        file_url = dummy_html_path.as_uri()
         page.goto(file_url)
         
         success = adapter.fill_application_form(page, profile, sample_pdf, [])
