@@ -553,15 +553,87 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
 
         <div class="search-bar" style="margin-top:12px;">
-            <input type="text" id="search-query" class="input-box" placeholder="Job Title / Skill" value="AI Engineer 0-2 years">
-            <input type="text" id="search-location" class="input-box" placeholder="Location" value="Bengaluru">
-            <select id="search-exp" class="input-box" style="max-width: 170px;">
+            <select id="search-query" class="input-box" style="flex: 2; min-width: 240px; cursor: pointer;">
+                <optgroup label="🔥 Most Popular / Candidate Target Roles">
+                    <option value="Junior Python Developer 0-2 years" selected>🐍 Junior Python Developer (0-2 Yrs)</option>
+                    <option value="Junior AI Engineer 0-2 years">🤖 Junior AI Engineer (0-2 Yrs)</option>
+                    <option value="Generative AI Python 1-2 years">⚡ GenAI &amp; LLM Developer (1-2 Yrs)</option>
+                    <option value="Associate Software Developer 0-2 years">🚀 Associate Software Engineer (0-2 Yrs)</option>
+                    <option value="Junior Data Analyst 0-2 years">📊 Junior Data Analyst (0-2 Yrs)</option>
+                    <option value="Junior Data Engineer 0-2 years">🛠️ Junior Data Engineer (0-2 Yrs)</option>
+                </optgroup>
+                <optgroup label="🤖 AI, GenAI &amp; Machine Learning">
+                    <option value="AI Engineer 0-2 years">🤖 AI Engineer (0-2 Yrs)</option>
+                    <option value="AI Agent Developer LangChain 1-2 years">🧠 AI Agent Developer / LangChain (1-2 Yrs)</option>
+                    <option value="Prompt Engineer RAG 0-2 years">🔮 Prompt Engineer &amp; RAG (0-2 Yrs)</option>
+                    <option value="Machine Learning Engineer 0-2 years">🧠 Machine Learning Engineer (0-2 Yrs)</option>
+                    <option value="NLP Engineer Python 0-2 years">💬 NLP / LLM Engineer (0-2 Yrs)</option>
+                    <option value="Computer Vision Engineer Python 0-2 years">👁️ Computer Vision Engineer (0-2 Yrs)</option>
+                    <option value="Deep Learning Engineer 0-2 years">🔬 Deep Learning Engineer (0-2 Yrs)</option>
+                </optgroup>
+                <optgroup label="💻 Software &amp; Backend Engineering">
+                    <option value="Python Developer 1-2 years">🐍 Python Developer (1-2 Yrs)</option>
+                    <option value="Backend Developer FastAPI 1-2 years">💼 Backend Developer (FastAPI / Django) (1-2 Yrs)</option>
+                    <option value="Full Stack Python Developer 0-2 years">🌐 Full Stack Python Developer (0-2 Yrs)</option>
+                    <option value="Software Development Engineer SDE 1">💻 SDE-1 / Software Developer 1 (0-2 Yrs)</option>
+                    <option value="API Microservices Engineer Python 0-2 years">⚙️ API / Microservices Engineer (0-2 Yrs)</option>
+                    <option value="Java Developer 0-2 years">☕ Java Developer (0-2 Yrs)</option>
+                    <option value="Node.js Backend Developer 0-2 years">🟢 Node.js / TypeScript Developer (0-2 Yrs)</option>
+                    <option value="React Frontend Developer 0-2 years">⚛️ React / Frontend Developer (0-2 Yrs)</option>
+                </optgroup>
+                <optgroup label="📊 Data, Analytics &amp; BI">
+                    <option value="Data Analyst 0-2 years">📊 Data Analyst (SQL / Python / PowerBI) (0-2 Yrs)</option>
+                    <option value="Data Scientist 0-2 years">📈 Data Scientist (0-2 Yrs)</option>
+                    <option value="Data Engineer 0-2 years">🛠️ Data Engineer (ETL / Pipelines) (0-2 Yrs)</option>
+                    <option value="Business Intelligence Analyst 0-2 years">📋 BI / Business Analyst (0-2 Yrs)</option>
+                </optgroup>
+                <optgroup label="🌱 Fresher, Intern &amp; Entry Level">
+                    <option value="Software Engineer Fresher 0-1 year">🌱 Software Engineer Fresher (0-1 Yr)</option>
+                    <option value="Python Developer Fresher 0-1 year">🐍 Python Developer Fresher (0-1 Yr)</option>
+                    <option value="Graduate Engineer Trainee 0-1 year">🎓 Graduate Engineer Trainee (GET) (0-1 Yr)</option>
+                    <option value="AI / ML Intern Fresher">💡 AI / ML Intern (Fresher)</option>
+                    <option value="Software Development Intern">💻 Software Development Intern</option>
+                </optgroup>
+                <optgroup label="☁️ Cloud, DevOps, QA &amp; Cyber">
+                    <option value="Cloud Engineer AWS Azure 0-2 years">☁️ Cloud Engineer (AWS / Azure) (0-2 Yrs)</option>
+                    <option value="DevOps Engineer 0-2 years">♾️ DevOps / CI-CD Engineer (0-2 Yrs)</option>
+                    <option value="QA Automation Engineer Python 0-2 years">🧪 QA Automation Engineer (Python / Selenium) (0-2 Yrs)</option>
+                    <option value="Cybersecurity Analyst 0-2 years">🛡️ Cybersecurity Analyst (0-2 Yrs)</option>
+                </optgroup>
+            </select>
+
+            <select id="search-location" class="input-box" style="flex: 1.5; min-width: 190px; cursor: pointer;">
+                <optgroup label="🇮🇳 Top India Tech Cities">
+                    <option value="Bengaluru" selected>📍 Bengaluru / Bangalore</option>
+                    <option value="Hyderabad">📍 Hyderabad</option>
+                    <option value="Pune">📍 Pune</option>
+                    <option value="Delhi NCR (Gurgaon / Noida)">📍 Delhi NCR (Gurgaon / Noida / Delhi)</option>
+                    <option value="Mumbai">📍 Mumbai / Navi Mumbai</option>
+                    <option value="Chennai">📍 Chennai</option>
+                    <option value="Kolkata">📍 Kolkata</option>
+                    <option value="Ahmedabad">📍 Ahmedabad / Gandhinagar</option>
+                    <option value="Kochi / Trivandrum">📍 Kochi / Trivandrum (Kerala)</option>
+                    <option value="Chandigarh / Mohali">📍 Chandigarh / Mohali</option>
+                    <option value="Coimbatore">📍 Coimbatore</option>
+                    <option value="Jaipur">📍 Jaipur</option>
+                    <option value="India">🇮🇳 Pan India / Any Location (India)</option>
+                </optgroup>
+                <optgroup label="🌐 Remote &amp; Global">
+                    <option value="Remote">🏠 Remote (India / Work From Home)</option>
+                    <option value="Worldwide Remote">🌍 Worldwide Remote / Global</option>
+                    <option value="United States Remote">🇺🇸 United States (Remote / US Timezone)</option>
+                    <option value="Europe Remote">🇪🇺 UK &amp; Europe (Remote)</option>
+                    <option value="All">🌐 Any Location / Worldwide</option>
+                </optgroup>
+            </select>
+
+            <select id="search-exp" class="input-box" style="max-width: 170px; cursor: pointer;">
                 <option value="0-2 years" selected>🎯 0–2 Years / Fresher</option>
                 <option value="1-2 years">🎯 1–2 Years Exp</option>
                 <option value="Fresher 0-1 year">🌱 Fresher (0–1 Yr)</option>
                 <option value="all">Any Experience</option>
             </select>
-            <select id="search-time" class="input-box" style="max-width: 150px;">
+            <select id="search-time" class="input-box" style="max-width: 150px; cursor: pointer;">
                 <option value="24h">Past 24 Hours</option>
                 <option value="3d" selected>Past 3 Days</option>
                 <option value="7d">Past 7 Days</option>
@@ -920,14 +992,35 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         let pollInterval = null;
 
         function setExpPreset(exp) {
-            document.getElementById('search-exp').value = exp;
-            const currentQ = document.getElementById('search-query').value.replace(/0-2 years|1-2 years|Fresher 0-1 year|Junior|Fresher/gi, '').trim();
-            document.getElementById('search-query').value = `${currentQ} ${exp}`.trim();
+            const expSelect = document.getElementById('search-exp');
+            if (expSelect) {
+                for (let i = 0; i < expSelect.options.length; i++) {
+                    if (expSelect.options[i].value === exp || expSelect.options[i].value.includes(exp)) {
+                        expSelect.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
             searchAndScore();
         }
 
         function setSearchPreset(role) {
-            document.getElementById('search-query').value = role;
+            const querySelect = document.getElementById('search-query');
+            if (querySelect) {
+                let found = false;
+                for (let i = 0; i < querySelect.options.length; i++) {
+                    if (querySelect.options[i].value === role || querySelect.options[i].value.toLowerCase().includes(role.toLowerCase()) || role.toLowerCase().includes(querySelect.options[i].value.toLowerCase())) {
+                        querySelect.selectedIndex = i;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    const opt = new Option(`🎯 ${role}`, role, true, true);
+                    querySelect.add(opt, 0);
+                    querySelect.selectedIndex = 0;
+                }
+            }
             searchAndScore();
         }
 
@@ -1312,6 +1405,8 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
         if path == "/" or path == "/index.html":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
             self.end_headers()
             self.wfile.write(DASHBOARD_HTML.encode("utf-8"))
             return
@@ -1845,7 +1940,7 @@ def run_dashboard_server(host: str = "0.0.0.0", port: int = 8000):
     server = ThreadedHTTPServer((host, port), AgentDashboardHandler)
     logger.info("=" * 60)
     logger.info(f"[bold green] Local AI Job Agent Dashboard Running at: http://localhost:{port}[/bold green]")
-    logger.info(f"[bold cyan]📱 Mobile Phone Access (Same Wi-Fi): http://192.168.31.87:{port}[/bold cyan]")
+    logger.info(f"[bold cyan] Mobile Phone Access (Same Wi-Fi): http://192.168.31.87:{port}[/bold cyan]")
     logger.info("=" * 60)
 
     # Start 2-Way Interactive Telegram Bot Daemon if configured
