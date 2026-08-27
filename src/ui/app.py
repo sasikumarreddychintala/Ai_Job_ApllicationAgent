@@ -2018,6 +2018,35 @@ def run_dashboard_server(host: str = "0.0.0.0", port: int = 8000):
     except Exception as e:
         logger.debug(f"Telegram Bot start notice: {e}")
 
+    # Auto-seed / Auto-discover on startup if database is fresh
+    def _startup_scout():
+        try:
+            conn = init_db()
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM jobs")
+            count = c.fetchone()[0]
+            conn.close()
+            if count == 0:
+                logger.info("[STARTUP] Fresh database detected. Auto-discovering 0-2 Yrs jobs in background...")
+                from src.jobs.finder import JobFinder
+                from src.agents.jd_agent import JDAgent
+                from src.agents.match_agent import MatchAgent
+                from src.agents.resume_agent import ResumeTailorAgent
+
+                finder = JobFinder.create_multi_source_finder()
+                discovered = finder.discover_jobs(query="Junior Python Developer 0-2 years", location="Bengaluru", time_range="3d")
+                jd_agent = JDAgent()
+                jd_agent.analyze_all_pending_jobs(limit=50)
+                match_agent = MatchAgent()
+                match_agent.evaluate_all_pending_jobs()
+                tailor_agent = ResumeTailorAgent()
+                tailor_agent.tailor_all_pending_jobs()
+                logger.info(f"[STARTUP] Initial auto-scout complete: {len(discovered)} jobs ready on dashboard!")
+        except Exception as e:
+            logger.debug(f"Startup scout notice: {e}")
+
+    threading.Thread(target=_startup_scout, daemon=True).start()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
