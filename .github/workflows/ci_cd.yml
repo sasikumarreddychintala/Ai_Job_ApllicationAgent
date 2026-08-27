@@ -1,0 +1,104 @@
+name: 🚀 Continuous Integration & Deployment (CI/CD)
+
+on:
+  push:
+    branches: [ "Agent", "main", "master" ]
+  pull_request:
+    branches: [ "Agent", "main", "master" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # 🧪 STEP 1: Code Quality, Linting & Python Unit Testing
+  # ============================================================================
+  test_and_lint:
+    name: 🧪 Lint, Validate & Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+          pip install flake8 pytest
+
+      - name: 🔍 Python Syntax & Clean Import Check
+        run: |
+          # Stop build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=.git,__pycache__,data
+
+      - name: 🎭 Install Playwright System Browsers
+        run: |
+          playwright install --with-deps chromium
+
+      - name: 🧪 Execute Automated Test Suite
+        env:
+          ENV: test
+          HEADLESS: "true"
+          DRY_RUN: "true"
+          RESUME_THEME: "tech"
+        run: |
+          python -m pytest tests/test_resume.py tests/test_jobs.py tests/test_source_adapters.py tests/test_matching.py tests/test_audit_logs.py -v
+
+  # ============================================================================
+  # 🐳 STEP 2: Container Verification & Production Image Build
+  # ============================================================================
+  docker_build:
+    name: 🐳 Docker Container Build & Verify
+    needs: test_and_lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Set up Docker Buildx
+        uses: actions/setup-buildx-action@v3
+
+      - name: 🐳 Build Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: ai-job-application-agent:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================================
+  # 🚀 STEP 3: Automated Continuous Deployment (Render Cloud Trigger)
+  # ============================================================================
+  deploy_production:
+    name: 🚀 Deploy to Render Cloud
+    needs: [test_and_lint, docker_build]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/Agent' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📡 Trigger Render Deploy Webhook
+        env:
+          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$DEPLOY_HOOK" ]; then
+            echo "🚀 Triggering automated production zero-downtime deployment on Render..."
+            curl -X POST "$DEPLOY_HOOK"
+            echo "✅ Render deployment hook triggered successfully!"
+          else
+            echo "ℹ️ Auto-deploy active via Render Git sync (Push directly triggers build)."
+          fi
