@@ -79,8 +79,8 @@ class JobFinder:
     @classmethod
     def create_multi_source_finder(
         cls,
-        greenhouse_companies: List[str] = ["anthropic", "figma", "linear", "supabase", "postman", "canonical", "fivetran", "razorpay", "cred", "airtable", "gitlab"],
-        lever_companies: List[str] = ["spotify", "palantir", "affirm", "fullstory"],
+        greenhouse_companies: List[str] = ["anthropic", "figma", "canonical", "fivetran", "airtable", "gitlab", "stripe", "openai", "github"],
+        lever_companies: List[str] = ["spotify", "palantir", "netflix", "atlassian"],
         db_path=settings.DATABASE_PATH
     ) -> "JobFinder":
         """Factory for live multi-board discovery across 28+ portals and direct ATS sources."""

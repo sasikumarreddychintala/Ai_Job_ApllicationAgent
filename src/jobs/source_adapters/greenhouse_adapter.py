@@ -47,7 +47,7 @@ class GreenhouseJobAdapter(BaseJobAdapter):
                             )
                         )
         except Exception as e:
-            logger.warning(f"Greenhouse fetch notice for '{self.company}': {e}")
+            logger.debug(f"Greenhouse fetch notice for '{self.company}': {e}")
 
         logger.info(f" Greenhouse adapter fetched {len(results)} jobs for '{self.company}'.")
         return results

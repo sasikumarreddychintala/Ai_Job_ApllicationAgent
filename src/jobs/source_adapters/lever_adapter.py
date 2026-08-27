@@ -47,7 +47,7 @@ class LeverJobAdapter(BaseJobAdapter):
                             )
                         )
         except Exception as e:
-            logger.warning(f"Lever fetch notice for '{self.company}': {e}")
+            logger.debug(f"Lever fetch notice for '{self.company}': {e}")
 
         logger.info(f" Lever adapter fetched {len(results)} jobs for '{self.company}'.")
         return results
