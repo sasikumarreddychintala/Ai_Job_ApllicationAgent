@@ -47,7 +47,12 @@ class MorningJobScheduler:
 
         # 1. Multi-source Discovery across all 10+ platforms with multi-role coverage
         finder = JobFinder.create_multi_source_finder()
-        queries_to_run = [query] if query else ["AI Engineer", "Associate Software Engineer", "Python Developer", "Data Analyst"]
+        queries_to_run = [query] if query else [
+            "Junior AI Engineer 0-2 years",
+            "Associate Software Engineer Python 0-2 years",
+            "Python Backend Developer 0-2 years",
+            "Junior Data Analyst Python 0-2 years"
+        ]
         discovered = []
         for q in queries_to_run:
             res = finder.discover_jobs(query=q, location=location, time_range="24h")
