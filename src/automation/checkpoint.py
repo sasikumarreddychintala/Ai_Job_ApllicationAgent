@@ -9,12 +9,13 @@ def save_application_checkpoint(
     job_id: int,
     step_name: str,
     payload: Dict[str, Any],
-    conn: Optional[sqlite3.Connection] = None
+    conn: Optional[sqlite3.Connection] = None,
+    db_path: Optional[str] = None
 ) -> int:
     """Saves a step execution checkpoint into SQLite application_events table."""
     should_close = False
     if conn is None:
-        conn = init_db(settings.DATABASE_PATH)
+        conn = init_db(db_path or settings.DATABASE_PATH)
         should_close = True
 
     try:
@@ -43,12 +44,13 @@ def save_application_checkpoint(
 
 def load_latest_checkpoint(
     job_id: int,
-    conn: Optional[sqlite3.Connection] = None
+    conn: Optional[sqlite3.Connection] = None,
+    db_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """Loads the most recent step checkpoint payload for a job_id."""
     should_close = False
     if conn is None:
-        conn = init_db(settings.DATABASE_PATH)
+        conn = init_db(db_path or settings.DATABASE_PATH)
         should_close = True
 
     try:

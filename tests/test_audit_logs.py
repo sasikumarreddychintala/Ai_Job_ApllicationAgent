@@ -11,7 +11,7 @@ from src.automation.checkpoint import save_application_checkpoint
 def test_audit_manager_history_and_events(tmp_path):
     db_file = tmp_path / "test_audit.db"
     
-    # 1. Populate DB with jobs
+    # 1. Populate DB with jobs (senior job filtered out -> 1 job discovered)
     finder = JobFinder(adapters=[LocalFixtureAdapter()], db_path=db_file)
     finder.discover_jobs()
     
@@ -23,7 +23,7 @@ def test_audit_manager_history_and_events(tmp_path):
     
     audit = AuditManager(db_path=db_file)
     history = audit.get_application_history()
-    assert len(history) == 2
+    assert len(history) == 1
     assert history[0]["status"] == "DISCOVERED"
     
     events = audit.get_application_events(1)
@@ -50,7 +50,7 @@ def test_audit_manager_export_json_and_csv(tmp_path):
     assert json_path.exists()
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
-        assert len(data) == 2
+        assert len(data) == 1
         assert "events" in data[0]
         
     # Export to CSV
@@ -59,5 +59,5 @@ def test_audit_manager_export_json_and_csv(tmp_path):
     with open(csv_path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
-        assert len(rows) == 2
-        assert rows[0]["job_id"] in ["1", "2"]
+        assert len(rows) == 1
+        assert rows[0]["job_id"] == "1"

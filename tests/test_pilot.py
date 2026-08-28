@@ -5,11 +5,17 @@ from src.resume.profile import ProfileManager
 from src.automation.pilot import PilotRunner
 from src.database.models import init_db
 
-def test_pilot_runner_dry_run_and_live(tmp_path):
+from config import settings
+
+def test_pilot_runner_dry_run_and_live(tmp_path, monkeypatch):
     db_file = tmp_path / "test_pilot.db"
     prof_file = tmp_path / "candidate_profile.json"
     master_dir = tmp_path / "master_resume"
     tailored_dir = tmp_path / "tailored_resumes"
+    
+    monkeypatch.setattr(settings, "INSPECTION_PAUSE_SECONDS", 0)
+    monkeypatch.setattr(settings, "HEADLESS", True)
+    monkeypatch.setattr(settings, "SLOW_MO", 0)
     
     dummy_html = Path(__file__).resolve().parent / "browser" / "dummy_app.html"
     assert dummy_html.exists()

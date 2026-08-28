@@ -135,6 +135,16 @@ class JDAgent:
         finally:
             conn.close()
 
+    def _fallback_parse_jd(
+        self,
+        raw_jd: str,
+        default_title: str,
+        default_company: str,
+        default_loc: str
+    ) -> ParsedJDRequirements:
+        """Deterministic fallback requirement parser for job descriptions."""
+        return self._extract_requirements(raw_jd, default_title, default_company, default_loc)
+
     def _extract_requirements(
         self,
         raw_jd: str,

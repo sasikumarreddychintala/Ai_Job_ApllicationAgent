@@ -20,8 +20,9 @@ from src.automation.checkpoint import save_application_checkpoint
 class ApplicationOrchestrator:
     """End-to-end master orchestrator coordinating discovery, matching, tailoring, and form automation."""
 
-    def __init__(self, db_path=settings.DATABASE_PATH):
+    def __init__(self, db_path=settings.DATABASE_PATH, finder: Optional[JobFinder] = None):
         self.db_path = db_path
+        self.finder = finder
         self.profile_manager = ProfileManager()
 
     def get_daily_submitted_count(self) -> int:
@@ -52,7 +53,7 @@ class ApplicationOrchestrator:
         logger.info("=" * 60)
 
         # 1. Discover Jobs
-        finder = JobFinder(db_path=self.db_path)
+        finder = self.finder if self.finder is not None else JobFinder(db_path=self.db_path)
         discovered_jobs = finder.discover_jobs()
         logger.info(f" Step 1: Discovered {len(discovered_jobs)} new jobs.")
 
@@ -176,6 +177,12 @@ class ApplicationOrchestrator:
                                     conn.execute("UPDATE applications SET status = 'SUBMITTED', applied_at = CURRENT_TIMESTAMP WHERE job_id = ?", (job_id,))
                                 logger.info(f" [SUBMITTED] Application submitted for '{title}' at {company}.")
 
+                            processed_count += 1
+                        else:
+                            logger.info(f" Standard application form not detected at '{url}'. Preparing application as READY_TO_SUBMIT.")
+                            with conn:
+                                conn.execute("UPDATE applications SET status = 'READY_TO_SUBMIT', updated_at = CURRENT_TIMESTAMP WHERE job_id = ?", (job_id,))
+                            save_application_checkpoint(job_id, "READY_TO_SUBMIT", {"url": url}, conn=conn)
                             processed_count += 1
 
                 except Exception as e:

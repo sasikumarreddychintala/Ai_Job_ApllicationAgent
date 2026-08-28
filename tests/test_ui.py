@@ -18,7 +18,7 @@ def test_dashboard_html_response(local_server):
     req = urllib.request.urlopen(f"{local_server}/")
     assert req.status == 200
     html = req.read().decode("utf-8")
-    assert "Personal AI Job Application Agent" in html
+    assert "Elevora AI" in html
 
 def test_api_applications_response(local_server):
     req = urllib.request.urlopen(f"{local_server}/api/applications")

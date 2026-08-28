@@ -15,11 +15,11 @@ def test_checkpoint_save_and_load(tmp_path):
     finder.discover_jobs()
     
     # Save checkpoint
-    evt_id = save_application_checkpoint(1, "TEST_STEP", {"field": "value"}, conn=None)
+    evt_id = save_application_checkpoint(1, "TEST_STEP", {"field": "value"}, db_path=db_file)
     assert evt_id is not None
     
     # Load checkpoint
-    ckpt = load_latest_checkpoint(1)
+    ckpt = load_latest_checkpoint(1, db_path=db_file)
     assert ckpt is not None
     assert ckpt["step_name"] == "TEST_STEP"
     assert ckpt["field"] == "value"
@@ -89,5 +89,5 @@ def test_captcha_pause_and_polling_resume(tmp_path):
     assert res is True
     
     # Verify DB checkpoint
-    ckpt = load_latest_checkpoint(1)
+    ckpt = load_latest_checkpoint(1, db_path=db_file)
     assert ckpt["step_name"] == "CAPTCHA_CLEARED"

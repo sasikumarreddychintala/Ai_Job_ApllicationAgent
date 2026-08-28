@@ -61,7 +61,7 @@ class CaptchaMonitor:
             "company": company,
             "title": title,
             "url": page.url
-        })
+        }, db_path=self.db_path)
         self._update_app_status(job_id, "CAPTCHA_WAITING")
 
         # 2. Trigger Local User Notification
@@ -76,7 +76,7 @@ class CaptchaMonitor:
         while time.time() - start_time < max_wait_seconds:
             if not self.detect_captcha(page):
                 logger.info(" CAPTCHA / Bot challenge cleared by user! Resuming automation...")
-                save_application_checkpoint(job_id, "CAPTCHA_CLEARED", {"url": page.url})
+                save_application_checkpoint(job_id, "CAPTCHA_CLEARED", {"url": page.url}, db_path=self.db_path)
                 return True
 
             time.sleep(poll_interval)

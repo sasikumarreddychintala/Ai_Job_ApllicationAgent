@@ -20,16 +20,16 @@ def test_fallback_parse_jd():
 def test_jd_agent_analyze_job(tmp_path):
     db_file = tmp_path / "test_jd_agent.db"
     
-    # 1. Discover a job to insert DISCOVERED state into DB
+    # 1. Discover a job to insert DISCOVERED state into DB (senior pre-filtered -> 1 discovered)
     adapter = LocalFixtureAdapter()
     finder = JobFinder(adapters=[adapter], db_path=db_file)
     discovered = finder.discover_jobs()
-    assert len(discovered) == 2
+    assert len(discovered) == 1
     
     # 2. Run JDAgent analyze_all_pending_jobs
     jd_agent = JDAgent(db_path=db_file)
     analyzed = jd_agent.analyze_all_pending_jobs()
-    assert len(analyzed) == 2
+    assert len(analyzed) == 1
     
     # 3. Verify SQLite records updated to ANALYZED state
     conn = init_db(db_file)

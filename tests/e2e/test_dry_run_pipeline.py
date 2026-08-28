@@ -18,13 +18,13 @@ class DummyFormAdapter(BaseJobAdapter):
     def fetch_jobs(self, query: str = "", location: str = ""):
         return [
             RawJobListing(
-                title="Senior Python Backend Developer",
+                title="Python Backend Developer",
                 company="DataFlow Systems",
                 location="Remote",
                 url=self.dummy_html_url,
                 source="dummy_form",
                 description="""
-                Looking for a Senior Python Backend Developer with 3+ years experience in Python, FastAPI, Docker, and PostgreSQL.
+                Looking for a Python Backend Developer with experience in Python, FastAPI, Docker, and PostgreSQL.
                 Work authorization without sponsorship required.
                 """
             )
@@ -44,6 +44,7 @@ def test_end_to_end_dry_run_pipeline(tmp_path, monkeypatch):
 
     # Force DRY_RUN = True
     monkeypatch.setattr(settings, "DRY_RUN", True)
+    monkeypatch.setattr(settings, "INSPECTION_PAUSE_SECONDS", 0)
     monkeypatch.setattr(settings, "DATABASE_PATH", db_file)
     monkeypatch.setattr(settings, "TAILORED_RESUMES_DIR", tailored_dir)
     monkeypatch.setattr(settings, "LOGS_DIR", logs_dir)
@@ -81,7 +82,7 @@ def test_end_to_end_dry_run_pipeline(tmp_path, monkeypatch):
     assert len(discovered) == 1
 
     # 4. Run Orchestrator Pipeline
-    orchestrator = ApplicationOrchestrator(db_path=db_file)
+    orchestrator = ApplicationOrchestrator(db_path=db_file, finder=finder)
     orchestrator.profile_manager = pm
     
     result = orchestrator.run_pipeline(max_applications=1)

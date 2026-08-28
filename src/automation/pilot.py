@@ -33,10 +33,10 @@ class PilotRunner:
         logger.info("=" * 60)
 
         # 1. Fetch Page Title & Text via Browser
-        # Auto-detect cloud environment: Render sets RENDER=true, Railway sets RAILWAY_ENVIRONMENT
+        # Auto-detect cloud environment: Render, GitHub Actions, CI, Railway, Fly
         import os
-        is_cloud = bool(os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("FLY_APP_NAME"))
-        run_headless = is_cloud  # Always headless on server; visual on local
+        is_cloud = bool(os.getenv("CI") or os.getenv("GITHUB_ACTIONS") or os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("FLY_APP_NAME"))
+        run_headless = is_cloud  # Always headless on server/CI; visual on local
         page_title = "Job Position"
         page_text = "Job Description"
         try:

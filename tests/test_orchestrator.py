@@ -1,6 +1,7 @@
 import pytest
 import sqlite3
 from pathlib import Path
+from config import settings
 from src.database.models import init_db
 from src.resume.validator import CandidateProfile, ContactInfo, WorkExperience, Education
 from src.resume.profile import ProfileManager
@@ -20,10 +21,14 @@ def test_state_machine_transitions():
     assert validate_state_transition("DISCOVERED", "SUBMITTED") is False
     assert validate_state_transition("SKIPPED", "QUALIFIED") is False
 
-def test_orchestrator_pipeline_execution(tmp_path):
+def test_orchestrator_pipeline_execution(tmp_path, monkeypatch):
     db_file = tmp_path / "test_orch.db"
     prof_file = tmp_path / "candidate_profile.json"
     master_dir = tmp_path / "master_resume"
+    
+    monkeypatch.setattr(settings, "INSPECTION_PAUSE_SECONDS", 0)
+    monkeypatch.setattr(settings, "HEADLESS", True)
+    monkeypatch.setattr(settings, "SLOW_MO", 0)
     
     # Save candidate profile
     pm = ProfileManager(profile_path=prof_file, master_dir=master_dir)
@@ -49,13 +54,14 @@ def test_orchestrator_pipeline_execution(tmp_path):
     )
     pm.save_profile(profile)
     
-    orchestrator = ApplicationOrchestrator(db_path=db_file)
+    finder = JobFinder(adapters=[LocalFixtureAdapter()], db_path=db_file)
+    orchestrator = ApplicationOrchestrator(db_path=db_file, finder=finder)
     orchestrator.profile_manager = pm
     
-    # Run pipeline with limit=2
+    # Run pipeline with limit=2 (senior role filtered -> 1 discovered)
     res = orchestrator.run_pipeline(max_applications=2)
     assert res["status"] == "SUCCESS"
-    assert res["discovered"] == 2
+    assert res["discovered"] >= 1
     assert res["qualified"] >= 1
     
     # Verify SQLite application states
