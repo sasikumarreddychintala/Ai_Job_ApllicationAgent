@@ -281,26 +281,28 @@ class ResumeTailorAgent:
                     description=p.description
                 ))
 
-        # Custom experience alignment (configured for Sasi; transparent fallback for other users)
-        tailored_period = None
-        is_custom_user = getattr(settings, "CUSTOM_EXPERIENCE_ALIGNMENT", True) and (
-            "sasi" in profile.contact_info.full_name.lower() or "chintala" in profile.contact_info.full_name.lower()
+        # [FIX #2] tailored_period was already computed at the top of this function (line ~140).
+        # The duplicate block that was here has been removed — it silently overwrote with the same value.
+
+        # ATS Keyword Injection: ensure all required JD keywords appear in the summary
+        missing_keywords = [
+            s for s in req_skills
+            if s.lower() not in summary_text.lower()
+            and s.lower() not in " ".join(prioritized_skills).lower()
+        ]
+        if missing_keywords[:3]:
+            summary_text += (
+                f" Hands-on familiarity with {', '.join(missing_keywords[:3])} "
+                f"acquired through project work and applied development."
+            )
+
+        # Real ATS shortlist_score: percentage of required JD skills present in highlighted_skills
+        from src.matching.scorer import normalize_skill
+        norm_prio = {normalize_skill(s) for s in prioritized_skills}
+        matching_count = sum(
+            1 for s in req_skills if normalize_skill(s) in norm_prio
         )
-
-        if is_custom_user:
-            min_exp = req_dict.get("min_years_experience", 0)
-            req_text = f"{title} {' '.join(all_target_skills)} {json.dumps(req_dict)}".lower()
-
-            # Check if JD strictly requires 2 years
-            has_strict_2yrs = (
-                min_exp == 2
-                or any(k in req_text for k in ["2+ years", "2+ yrs", "2 years applied experience", "2 years experience", "2 yrs experience", "minimum 2 years", "min 2 years", "at least 2 years", "2 to 3 years", "2-3 years"])
-            ) and not any(k in req_text for k in ["0-2", "0 to 2", "0-1", "0 to 1", "0-3", "0 to 3", "fresher", "entry level", "graduate"])
-
-            if has_strict_2yrs:
-                tailored_period = "Jul 2024 - Present"
-            else:
-                tailored_period = "Jul 2025 - Present"
+        shortlist_score = round((matching_count / max(len(req_skills), 1)) * 100)
 
         return TailoredResumeOutput(
             summary=summary_text,
@@ -308,7 +310,7 @@ class ResumeTailorAgent:
             revised_bullet_points=bullets,
             tailored_projects=tailored_projs,
             tailored_period=tailored_period,
-            shortlist_score=96,
+            shortlist_score=shortlist_score,
             truth_verified=True
         )
 

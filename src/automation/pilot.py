@@ -33,11 +33,15 @@ class PilotRunner:
         logger.info("=" * 60)
 
         # 1. Fetch Page Title & Text via Browser
+        # Auto-detect cloud environment: Render sets RENDER=true, Railway sets RAILWAY_ENVIRONMENT
+        import os
+        is_cloud = bool(os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("FLY_APP_NAME"))
+        run_headless = is_cloud  # Always headless on server; visual on local
         page_title = "Job Position"
         page_text = "Job Description"
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                browser = p.chromium.launch(headless=run_headless)
                 page = browser.new_page()
                 page.goto(url, timeout=30000)
                 page_title = page.title() or "Job Position"
@@ -122,7 +126,7 @@ class PilotRunner:
             adapter = GenericFormAdapter()
             captcha_mon = CaptchaMonitor(db_path=self.db_path)
 
-            with BrowserManager(headless=False, slow_mo=500) as page:
+            with BrowserManager(headless=run_headless, slow_mo=500 if not run_headless else 0) as page:
                 try:
                     page.goto(url)
                 except Exception as e:

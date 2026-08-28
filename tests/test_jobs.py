@@ -33,22 +33,23 @@ def test_job_finder_discovery_and_deduplication(tmp_path):
     adapter = LocalFixtureAdapter()
     finder = JobFinder(adapters=[adapter], db_path=db_file)
     
-    # First run discovers fixtures
+    # First run: LocalFixtureAdapter has 2 jobs but one is "Senior Full Stack AI Engineer"
+    # which is now correctly blocked by the title pre-filter before DB save.
     discovered = finder.discover_jobs()
-    assert len(discovered) == 2
+    assert len(discovered) == 1  # Only the non-senior job passes the pre-filter
     
-    # Second run with same adapter should detect duplicates and discover 0 new jobs
+    # Second run with same adapter should detect the 1 saved job as duplicate → 0 new
     discovered_retry = finder.discover_jobs()
     assert len(discovered_retry) == 0
     
-    # Verify DB contents
+    # Verify DB contents: only 1 job saved (the non-senior one)
     conn = init_db(db_file)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM jobs")
     job_count = cursor.fetchone()[0]
-    assert job_count == 2
+    assert job_count == 1
     
     cursor.execute("SELECT COUNT(*) FROM applications WHERE status = 'DISCOVERED'")
     app_count = cursor.fetchone()[0]
-    assert app_count == 2
+    assert app_count == 1
     conn.close()

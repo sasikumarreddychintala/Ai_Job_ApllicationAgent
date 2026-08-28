@@ -1,5 +1,6 @@
 import re
-from typing import List, Set
+from datetime import datetime
+from typing import List, Set, Optional
 from config import settings
 from src.resume.validator import CandidateProfile
 from src.ai.schemas import ParsedJDRequirements, MatchEvaluation, MatchScoreBreakdown
@@ -32,19 +33,53 @@ SKILL_ALIASES = {
     "db": "database",
     "ci/cd": "cicd",
     "ci-cd": "cicd",
-    "bi": "business intelligence"
+    "bi": "business intelligence",
+    "ml": "machine learning",
+    "nlp": "natural language processing",
+    "dl": "deep learning",
+    "mongo": "mongodb",
+    "nosql": "nosql database",
+    "kafka": "apache kafka",
 }
 
-# Semantic Skill Clusters for Hybrid Matching
+# Semantic Skill Clusters for Hybrid Matching.
+# IMPORTANT: Each skill must belong to AT MOST ONE cluster to prevent cross-cluster false matches.
+# e.g. "java" and "javascript" are SEPARATE clusters — no shared members.
 SKILL_CLUSTERS = {
     "python": {"python", "fastapi", "django", "flask", "asyncio", "celery", "pydantic", "sqlalchemy"},
-    "generative ai": {"generative ai", "large language models", "retrieval-augmented generation", "langchain", "llamaindex", "crewai", "ollama", "groq", "openai", "embeddings", "vector databases", "transformers"},
-    "postgresql": {"postgresql", "sql", "relational database", "mysql", "sqlite", "database design"},
+    "generative ai": {"generative ai", "large language models", "retrieval-augmented generation", "langchain", "llamaindex", "crewai", "ollama", "groq", "openai", "embeddings", "vector databases", "transformers", "hugging face"},
+    "postgresql": {"postgresql", "relational database", "mysql", "sqlite", "database design"},
     "docker": {"docker", "containerization", "kubernetes", "docker-compose"},
     "playwright": {"playwright", "selenium", "web automation", "browser automation", "scraping", "beautifulsoup"},
     "fastapi": {"fastapi", "rest apis", "microservices", "api development", "backend development"},
-    "data analysis": {"data analysis", "pandas", "numpy", "powerbi", "tableau", "sql", "data pipelines"}
+    "data analysis": {"data analysis", "pandas", "numpy", "powerbi", "tableau", "data pipelines"},
+    "machine learning": {"machine learning", "deep learning", "pytorch", "tensorflow", "scikit-learn", "computer vision", "natural language processing"},
+    # java and javascript are INTENTIONALLY SEPARATE clusters
+    "java": {"java", "spring", "spring boot", "maven", "gradle", "jvm"},
+    "javascript": {"javascript", "typescript", "node.js", "react", "vue", "angular"},
+    "apache kafka": {"apache kafka", "event streaming", "event-driven", "message queue", "rabbitmq"},
+    "mongodb": {"mongodb", "nosql database", "dynamodb", "cassandra"},
 }
+
+# City alias map for location matching accuracy (Bengaluru/Bangalore etc.)
+CITY_ALIASES: dict = {
+    "bengaluru": {"bengaluru", "bangalore", "blr", "bengalore", "bangaluru"},
+    "mumbai": {"mumbai", "bombay", "mum"},
+    "delhi": {"delhi", "new delhi", "ncr", "gurgaon", "gurugram", "noida", "faridabad"},
+    "hyderabad": {"hyderabad", "hyd", "secunderabad", "cyberabad"},
+    "pune": {"pune", "poona"},
+    "chennai": {"chennai", "madras"},
+    "kolkata": {"kolkata", "calcutta"},
+}
+
+_MONTH_MAP = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "june": 6, "july": 7, "august": 8, "september": 9,
+    "october": 10, "november": 11, "december": 12,
+}
+
 
 def normalize_skill(skill: str) -> str:
     """Normalizes skill strings for accurate semantic comparison."""
@@ -52,16 +87,100 @@ def normalize_skill(skill: str) -> str:
     clean = re.sub(r'\s+', ' ', clean)
     return SKILL_ALIASES.get(clean, clean)
 
+
 def are_skills_semantically_related(skill_a: str, skill_b: str) -> bool:
-    """Checks if two skills belong to the same technical cluster or domain."""
+    """
+    Checks if two skills belong to the same technical cluster.
+    Uses cluster membership only — NOT substring — to prevent false matches like java→javascript.
+    """
     norm_a = normalize_skill(skill_a)
     norm_b = normalize_skill(skill_b)
-    if norm_a == norm_b or norm_a in norm_b or norm_b in norm_a:
+    if norm_a == norm_b:
         return True
     for cluster in SKILL_CLUSTERS.values():
         if norm_a in cluster and norm_b in cluster:
             return True
     return False
+
+
+def _parse_date_str(date_str: str) -> Optional[datetime]:
+    """
+    Parse date strings like 'Jul 2025', 'July 2024', '2025-07', '07/2025'.
+    Returns datetime or None. 'present'/'current' returns today.
+    """
+    s = date_str.strip().lower()
+    if not s or s in ("present", "current", "now", "ongoing", "till date"):
+        return datetime.now()
+
+    # "Month YYYY" e.g. "Jul 2025"
+    m = re.match(r'([a-z]+)\s+(20\d\d|19\d\d)', s)
+    if m:
+        month_name, year = m.group(1), int(m.group(2))
+        month = _MONTH_MAP.get(month_name[:3])
+        if month:
+            return datetime(year, month, 1)
+
+    # "YYYY-MM" or "MM/YYYY"
+    m = re.match(r'(20\d\d|19\d\d)[-/](0?[1-9]|1[0-2])', s)
+    if m:
+        return datetime(int(m.group(1)), int(m.group(2)), 1)
+    m = re.match(r'(0?[1-9]|1[0-2])/(20\d\d|19\d\d)', s)
+    if m:
+        return datetime(int(m.group(2)), int(m.group(1)), 1)
+
+    # Plain year "2025"
+    m = re.match(r'\b(20\d\d|19\d\d)\b', s)
+    if m:
+        return datetime(int(m.group(1)), 7, 1)  # assume mid-year
+
+    return None
+
+
+def _compute_experience_years(candidate: CandidateProfile) -> float:
+    """
+    Month-aware experience calculation using datetime diff.
+    Far more accurate than year-only subtraction (avoids ±11 month errors).
+    """
+    total_months = 0
+    for exp in candidate.experience:
+        start_str = str(exp.start_date or "").strip()
+        end_str = str(exp.end_date or "present").strip()
+
+        start_dt = _parse_date_str(start_str)
+        end_dt = _parse_date_str(end_str)
+
+        if start_dt and end_dt and end_dt >= start_dt:
+            diff_months = (end_dt.year - start_dt.year) * 12 + (end_dt.month - start_dt.month)
+            total_months += max(1, diff_months)
+        else:
+            total_months += 12  # fallback: assume 1 year
+
+    return round(total_months / 12, 2)
+
+
+def _location_matches(cand_loc: str, jd_loc: str) -> bool:
+    """
+    Location match using city alias map.
+    Handles Bengaluru/Bangalore, Delhi/NCR, remote/hybrid keywords.
+    """
+    cand_lower = cand_loc.lower()
+    jd_lower = jd_loc.lower()
+
+    if not jd_lower or "remote" in jd_lower or "anywhere" in jd_lower or "worldwide" in jd_lower:
+        return True
+    if "remote" in cand_lower:
+        return True
+    if jd_lower in cand_lower or cand_lower in jd_lower:
+        return True
+
+    for canonical, aliases in CITY_ALIASES.items():
+        cand_in_cluster = any(alias in cand_lower for alias in aliases)
+        jd_in_cluster = any(alias in jd_lower for alias in aliases)
+        if cand_in_cluster and jd_in_cluster:
+            return True
+
+    return False
+
 
 def calculate_match_score(
     candidate: CandidateProfile,
@@ -70,8 +189,18 @@ def calculate_match_score(
     """
     Computes a transparent weighted match evaluation score between verified candidate profile facts
     and parsed JD requirements.
+
+    Score weights (total = 100):
+      required_skills:       30 pts  (was 35 — freed 5 pts for preferred_skills)
+      preferred_skills:       5 pts  [NEW]
+      experience_fit:        20 pts
+      project_relevance:     15 pts
+      technical_similarity:  15 pts
+      education:              5 pts
+      location:               5 pts
+      other_factors:          5 pts
     """
-    # 1. Check hard constraint rules first
+    # 1. Hard constraint check
     violated, reason = check_hard_constraints(candidate, requirements)
     if violated:
         breakdown = MatchScoreBreakdown(
@@ -93,13 +222,15 @@ def calculate_match_score(
             reasoning=f"HARD CONSTRAINT VIOLATED: {reason}"
         )
 
-    # 2. Skill Overlap Calculation (0-35 points)
+    # 2. Build candidate skill set (profile + experience-verified skills)
     candidate_skills_set: Set[str] = {normalize_skill(s) for s in candidate.skills}
-    # Add skills from experience highlights
     for exp in candidate.experience:
         for s in exp.verified_skills:
             candidate_skills_set.add(normalize_skill(s))
 
+    # 3. Required Skill Matching (0–30 pts)
+    # FIX: Use exact match OR semantic cluster match ONLY.
+    # Old substring match caused java→javascript false positives.
     req_skills = [s for s in requirements.required_skills if s.strip()]
     matched_skills = []
     missing_skills = []
@@ -107,94 +238,98 @@ def calculate_match_score(
     if req_skills:
         for req_s in req_skills:
             norm_req_s = normalize_skill(req_s)
-            if norm_req_s in candidate_skills_set or any(norm_req_s in s for s in candidate_skills_set):
+            matched = (
+                norm_req_s in candidate_skills_set
+                or any(are_skills_semantically_related(norm_req_s, cs) for cs in candidate_skills_set)
+            )
+            if matched:
                 matched_skills.append(req_s)
             else:
                 missing_skills.append(req_s)
         match_ratio = len(matched_skills) / len(req_skills)
-        required_skills_score = round(match_ratio * 35)
+        required_skills_score = round(match_ratio * 30)
     else:
-        required_skills_score = 35
+        required_skills_score = 30
 
-    # 3. Experience Depth Fit (0-20 points)
-    # Calculate candidate experience years from positions
-    total_exp_years = 0.0
-    for exp in candidate.experience:
-        start_str = str(exp.start_date or "").strip().lower()
-        end_str = str(exp.end_date or "present").strip().lower()
-        
-        # Check for year numbers in start and end
-        start_years = re.findall(r'\b(20\d\d|19\d\d)\b', start_str)
-        end_years = re.findall(r'\b(20\d\d|19\d\d)\b', end_str)
-        
-        if start_years and end_years:
-            diff = int(end_years[0]) - int(start_years[0])
-            total_exp_years += max(1.0, float(diff))
-        elif start_years:
-            # Started in recent year (e.g. 2025)
-            total_exp_years += max(1.0, 2026 - int(start_years[0]) + 0.5)
-        else:
-            total_exp_years += 1.5
+    # 4. Preferred Skills Bonus (0–5 pts) [NEW]
+    pref_skills = [s for s in getattr(requirements, "preferred_skills", []) if s.strip()]
+    if pref_skills:
+        pref_matched = [
+            s for s in pref_skills
+            if normalize_skill(s) in candidate_skills_set
+            or any(are_skills_semantically_related(normalize_skill(s), cs) for cs in candidate_skills_set)
+        ]
+        preferred_skills_score = round((len(pref_matched) / len(pref_skills)) * 5)
+    else:
+        preferred_skills_score = 3  # neutral when JD has no preferred skills listed
 
+    # 5. Experience Depth Fit (0–20 pts) — month-aware datetime calculation
+    total_exp_years = _compute_experience_years(candidate)
     min_years = float(requirements.min_years_experience or 0)
     title_lower = (getattr(requirements, "title", "") or "").lower()
-    is_early_career = any(w in title_lower for w in ["fresher", "junior", "associate", "entry level", "graduate", "trainee", "intern"]) or min_years <= 2.0
+    is_early_career = (
+        any(w in title_lower for w in ["fresher", "junior", "associate", "entry level", "graduate", "trainee", "intern"])
+        or min_years <= 2.0
+    )
 
     if is_early_career or min_years <= 2.0:
-        # Perfect 0-2 Yrs / Fresher target fit
         experience_fit_score = 20
     elif min_years <= 3.0:
         experience_fit_score = 15
     else:
-        # Penalize higher experience roles
         experience_fit_score = 5
 
-    # 4. Project Relevance (0-15 points)
-    if candidate.projects:
-        project_relevance_score = 15 if len(candidate.projects) >= 2 else 10
-    else:
-        project_relevance_score = 5
+    # 6. Project Relevance (0–15 pts) — JD keyword overlap
+    jd_keywords_set: Set[str] = {normalize_skill(k) for k in requirements.keywords if k.strip()}
+    jd_keywords_set.update(normalize_skill(s) for s in req_skills)
 
-    # 5. Technical Semantic Similarity (0-15 points)
-    # Overlap between candidate summary/skills and JD keywords
-    jd_keywords = set(normalize_skill(k) for k in requirements.keywords if k.strip())
-    if jd_keywords:
-        tech_matched = [k for k in jd_keywords if k in candidate_skills_set]
-        tech_ratio = len(tech_matched) / len(jd_keywords)
+    if candidate.projects:
+        project_rel_score = 0
+        for proj in candidate.projects:
+            proj_tech = {normalize_skill(t) for t in proj.technologies}
+            overlap = len(proj_tech & jd_keywords_set)
+            project_rel_score += min(5, overlap * 2)
+        project_relevance_score = min(15, project_rel_score if project_rel_score > 0 else 8)
+    else:
+        project_relevance_score = 3
+
+    # 7. Technical Semantic Similarity (0–15 pts)
+    if jd_keywords_set:
+        tech_matched = [
+            k for k in jd_keywords_set
+            if k in candidate_skills_set
+            or any(are_skills_semantically_related(k, cs) for cs in candidate_skills_set)
+        ]
+        tech_ratio = len(tech_matched) / len(jd_keywords_set)
         technical_similarity_score = round(tech_ratio * 15)
     else:
-        technical_similarity_score = 12
+        technical_similarity_score = 10
 
-    # 6. Education Fit (0-5 points)
-    if candidate.education:
-        education_score = 5
-    else:
-        education_score = 3
+    # 8. Education Fit (0–5 pts)
+    education_score = 5 if candidate.education else 3
 
-    # 7. Location Fit (0-5 points)
-    cand_loc = (candidate.contact_info.location or "").lower()
-    jd_loc = (requirements.location or "").lower()
-    if "remote" in jd_loc or "remote" in cand_loc or jd_loc in cand_loc or cand_loc in jd_loc:
-        location_score = 5
-    else:
-        location_score = 3
+    # 9. Location Fit (0–5 pts) — city alias map
+    cand_loc = candidate.contact_info.location or ""
+    jd_loc = requirements.location or ""
+    location_score = 5 if _location_matches(cand_loc, jd_loc) else 2
 
-    # 8. Other Factors (0-5 points)
+    # 10. Other Factors (0–5 pts)
     other_factors_score = 5 if candidate.certifications else 4
 
-    # Calculate Total Overall Score (0-100)
+    # Total Score
     total_score = (
-        required_skills_score +
-        experience_fit_score +
-        project_relevance_score +
-        technical_similarity_score +
-        education_score +
-        location_score +
-        other_factors_score
+        required_skills_score
+        + preferred_skills_score
+        + experience_fit_score
+        + project_relevance_score
+        + technical_similarity_score
+        + education_score
+        + location_score
+        + other_factors_score
     )
     total_score = min(100, max(0, total_score))
 
-    # Map decision based on configurable thresholds
+    # Decision mapping
     if total_score < settings.MIN_MATCH_SCORE:
         decision = "SKIP"
     elif total_score < 80:
@@ -216,8 +351,10 @@ def calculate_match_score(
 
     reasoning = (
         f"Match Score: {total_score}/100 ({decision}). "
-        f"Matched {len(matched_skills)}/{len(req_skills) if req_skills else 1} required skills. "
-        f"Missing required skills: {', '.join(missing_skills) if missing_skills else 'None'}."
+        f"Required Skills: {len(matched_skills)}/{len(req_skills) if req_skills else 1} matched. "
+        f"Preferred Skills bonus: {preferred_skills_score}/5. "
+        f"Experience: ~{total_exp_years}yrs (JD needs {min_years}yrs). "
+        f"Missing required: {', '.join(missing_skills) if missing_skills else 'None'}."
     )
 
     return MatchEvaluation(

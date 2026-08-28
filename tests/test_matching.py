@@ -85,29 +85,30 @@ def test_match_agent_pipeline(tmp_path):
     jd_agent = JDAgent(db_path=db_file)
     jd_agent.analyze_all_pending_jobs()
     
-    # 3. Match Jobs
+    # 3. Match Jobs — Senior job is pre-filtered at DB save, so only 1 job reaches evaluation
     match_agent = MatchAgent(profile_manager=pm, db_path=db_file)
     evals = match_agent.evaluate_all_pending_jobs()
-    assert len(evals) == 2
+    assert len(evals) == 1  # Senior job blocked by pre-filter; only junior Python Backend Developer scored
     # Verify non-senior role is QUALIFIED with score >= 70
     qualified_evals = [e for e in evals if e.decision != "SKIP"]
     assert len(qualified_evals) == 1
     assert qualified_evals[0].overall_score >= 70
     assert qualified_evals[0].decision in ["APPLY", "HIGH", "VERY_HIGH"]
 
-    # Verify senior role is properly filtered to SKIP
+    # Verify senior role is blocked BEFORE scoring (pre-filter at DB save level)
+    # → evals list contains only 1 item (the junior job), 0 SKIP evals
     skipped_evals = [e for e in evals if e.decision == "SKIP"]
-    assert len(skipped_evals) == 1
-    
+    assert len(skipped_evals) == 0  # Senior never reached evaluator — blocked at DB save
+
     # 4. Verify SQLite application states updated in DB
     conn = init_db(db_file)
     cursor = conn.cursor()
     cursor.execute("SELECT status FROM applications")
     statuses = [row[0] for row in cursor.fetchall()]
     assert "QUALIFIED" in statuses
-    assert "SKIPPED" in statuses
-    
+    # Note: Senior job is NOT in DB at all (pre-filtered), so no SKIPPED status here
+
     cursor.execute("SELECT COUNT(*) FROM job_matches")
     match_count = cursor.fetchone()[0]
-    assert match_count == 2
+    assert match_count == 1  # Only 1 job was scored (the junior Python Backend Developer)
     conn.close()

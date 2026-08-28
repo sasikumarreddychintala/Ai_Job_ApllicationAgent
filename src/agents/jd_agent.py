@@ -58,7 +58,8 @@ class JDAgent:
                 conn.close()
 
     def analyze_all_pending_jobs(self, limit: int = 150) -> List[ParsedJDRequirements]:
-        """Analyzes up to 150 pending jobs in DISCOVERED state with lightning speed and comprehensive tech parsing."""
+        """Analyzes up to 150 pending jobs in DISCOVERED state using parallel Cloud AI workers."""
+        import concurrent.futures
         conn = init_db(self.db_path)
         analyzed_list = []
         try:
@@ -74,30 +75,62 @@ class JDAgent:
             rows = cursor.fetchall()
             logger.info(f" Found {len(rows)} pending jobs in DISCOVERED state.")
 
+            # Expanded non-tech keyword filter (35+ categories vs old 12)
             non_tech_keywords = [
-                "barber", "nanny", "technician", "driver", "meat", "lifeguard", 
-                "hostess", "bell person", "janitorial", "cleaner", "labourer", 
-                "cashier", "clerk", "electrician", "handyman", "painter", "influencer",
-                "counsel", "financial analyst", "dispute analyst", "compliance"
+                # Physical / trade
+                "barber", "nanny", "technician", "driver", "meat", "lifeguard",
+                "hostess", "bell person", "janitorial", "cleaner", "labourer",
+                "cashier", "clerk", "electrician", "handyman", "painter",
+                "plumber", "carpenter", "welder", "mechanic", "operator",
+                # Healthcare / legal / finance
+                "influencer", "counsel", "financial analyst", "dispute analyst",
+                "compliance officer", "nurse", "doctor", "physician", "pharmacist",
+                "lawyer", "solicitor", "accountant", "auditor", "tax consultant",
+                # Non-tech marketing / creative
+                "content writer", "copywriter", "graphic designer", "illustrator",
+                "social media manager", "digital marketing", "seo specialist",
+                "brand manager", "event coordinator", "pr executive",
+                # Sales / retail / hospitality
+                "sales executive", "field sales", "insurance agent", "tele caller",
+                "retail", "store manager", "chef", "cook", "waiter", "bartender",
+                # HR / admin
+                "hr executive", "human resource", "recruiter", "talent acquisition",
+                "admin assistant", "office manager", "data entry",
+                # Logistics / supply chain
+                "logistics", "supply chain", "warehouse", "delivery", "fleet",
             ]
 
-            processed_count = 0
+            # Fast title-skip DISCOVERED → SKIPPED (same logic as finder pre-filter for any that slipped through)
+            ids_to_analyze = []
             for j_id, title in rows:
                 t_lower = title.lower()
-                # Fast skip clearly non-tech jobs
                 if any(k in t_lower for k in non_tech_keywords):
                     with conn:
                         conn.execute("UPDATE applications SET status = 'SKIPPED' WHERE job_id = ?", (j_id,))
                     continue
-
-                if processed_count >= limit:
+                ids_to_analyze.append(j_id)
+                if len(ids_to_analyze) >= limit:
                     break
 
-                req = self.analyze_job(j_id, conn=conn)
-                analyzed_list.append(req)
-                processed_count += 1
+            logger.info(f" {len(ids_to_analyze)} jobs queued for parallel JD analysis (limit={limit}).")
 
-            logger.info(f" Batch JD analysis complete: {len(analyzed_list)} jobs analyzed and ready for scoring.")
+            # Parallel analysis — each thread opens its own DB connection (thread-safe)
+            def _analyze_one(job_id: int) -> "ParsedJDRequirements | None":
+                try:
+                    return self.analyze_job(job_id)
+                except Exception as e:
+                    logger.debug(f"JD analysis notice for job {job_id}: {e}")
+                    return None
+
+            max_workers = min(8, len(ids_to_analyze)) if ids_to_analyze else 1
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(_analyze_one, j_id): j_id for j_id in ids_to_analyze}
+                for future in concurrent.futures.as_completed(futures):
+                    result = future.result()
+                    if result is not None:
+                        analyzed_list.append(result)
+
+            logger.info(f" Parallel JD analysis complete: {len(analyzed_list)} jobs analyzed and ready for scoring.")
             return analyzed_list
         finally:
             conn.close()

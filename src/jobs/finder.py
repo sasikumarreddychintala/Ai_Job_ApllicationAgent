@@ -40,6 +40,33 @@ from src.jobs.source_adapters.otta_adapter import OttaJobAdapter
 from src.jobs.source_adapters.dynamite_adapter import DynamiteJobsAdapter
 from src.jobs.source_adapters.aijobs_adapter import AIJobsNetAdapter
 
+# Title-level pre-filters: block these before even saving to DB, to avoid wasted LLM calls.
+_SENIOR_TITLE_KEYWORDS = [
+    "senior", "sr.", " lead", "staff ", "principal", "architect",
+    "director", "head of", "engineering manager", "tech lead", "vp ",
+    "vice president", "chief", " cto", " ceo", "president",
+]
+_NON_TECH_TITLE_KEYWORDS = [
+    "barber", "nanny", "driver", "lifeguard", "hostess", "janitorial",
+    "cleaner", "cashier", "electrician", "handyman", "painter",
+    "influencer", "sales executive", "field sales", "insurance agent",
+    "nurse", "doctor", "chef", "cook", "waiter", "accountant",
+    "lawyer", "legal counsel", "hr executive", "human resource",
+    "content writer", "copywriter", "graphic designer", "social media manager",
+    "digital marketing", "seo specialist", "brand manager", "event coordinator",
+    "fashion", "beauty", "retail", "store manager", "logistics", "supply chain",
+]
+
+def _is_title_blocked(title: str) -> bool:
+    """Returns True if the job title should be discarded before saving to DB."""
+    t = title.lower()
+    if any(k in t for k in _SENIOR_TITLE_KEYWORDS):
+        return True
+    if any(k in t for k in _NON_TECH_TITLE_KEYWORDS):
+        return True
+    return False
+
+
 class JobFinder:
     """Orchestrates job discovery across 28+ adapters, deduplicates listings, and persists new jobs into SQLite."""
 
@@ -158,8 +185,10 @@ class JobFinder:
                             if is_job_duplicate(norm_job.fingerprint, norm_job.url, conn):
                                 continue
                             # Save new unique job to database immediately
-                            self._save_job_to_db(conn, norm_job)
-                            discovered_new.append(norm_job)
+                            # Returns 0 if pre-filtered (senior/non-tech title), >0 if saved
+                            job_id = self._save_job_to_db(conn, norm_job)
+                            if job_id > 0:
+                                discovered_new.append(norm_job)
                     except Exception as e:
                         logger.debug(f"Error processing adapter batch: {e}")
 
@@ -168,8 +197,17 @@ class JobFinder:
         finally:
             conn.close()
 
+
+
     def _save_job_to_db(self, conn: sqlite3.Connection, job: NormalizedJob) -> int:
-        """Persists normalized job record and initial DISCOVERED application state into SQLite."""
+        """Persists normalized job record and initial DISCOVERED application state into SQLite.
+        Returns 0 (skipped) or the new job DB id.
+        """
+        # Pre-filter: block senior/non-tech titles at discovery time
+        if _is_title_blocked(job.title):
+            logger.debug(f"[PRE-FILTER] Skipping title before DB save: '{job.title}'")
+            return 0
+
         with conn:
             cursor = conn.cursor()
             cursor.execute(
