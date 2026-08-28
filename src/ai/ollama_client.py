@@ -1,6 +1,9 @@
 import os
 import json
+import time
+import threading
 import urllib.request
+import urllib.error
 from typing import Type, TypeVar, Optional, Dict, Any
 from pydantic import BaseModel
 
@@ -8,6 +11,20 @@ from config import settings
 from src.utils.logger import logger
 
 T = TypeVar("T", bound=BaseModel)
+
+# Thread-safe rate limiter lock across parallel JD workers
+_AI_RATE_LOCK = threading.Lock()
+_LAST_CALL_TIMESTAMP = 0.0
+
+def _pace_ai_requests(min_interval: float = 0.12):
+    """Smooths out bursting concurrency across parallel workers to prevent HTTP 429 / 400."""
+    global _LAST_CALL_TIMESTAMP
+    with _AI_RATE_LOCK:
+        now = time.time()
+        elapsed = now - _LAST_CALL_TIMESTAMP
+        if elapsed < min_interval:
+            time.sleep(min_interval - elapsed)
+        _LAST_CALL_TIMESTAMP = time.time()
 
 class OllamaClient:
     """Reusable HTTP client for Ollama LLM inference with Pydantic JSON schema enforcement & retries."""
@@ -32,8 +49,8 @@ class OllamaClient:
     ) -> T:
         """
         Sends prompt to Multi-Tier AI Engine with Automatic Failover:
-        Tier 1: Groq Cloud (Llama 3.3 70B)
-        Tier 2: Google Gemini Cloud (Gemini 1.5 Flash)
+        Tier 1: Groq Cloud (Llama 3.3 70B -> Llama 3.1 8B Instant)
+        Tier 2: Google Gemini Cloud (Gemini 1.5 Flash -> Gemini 2.0 Flash)
         Tier 3: Local Ollama (Qwen 2.5)
         Tier 4: Built-in Deterministic Rule Engine
         """
@@ -43,6 +60,7 @@ class OllamaClient:
         # --- Tier 1: Try Groq Cloud ---
         if groq_api_key:
             try:
+                _pace_ai_requests(0.15)
                 return self._generate_groq(prompt, response_schema, groq_api_key, temperature)
             except Exception as e:
                 logger.warning(f"⚠️ Groq Cloud notice / rate limit ({e}). Automatically failing over to next AI provider...")
@@ -50,6 +68,7 @@ class OllamaClient:
         # --- Tier 2: Try Google Gemini Cloud ---
         if gemini_api_key:
             try:
+                _pace_ai_requests(0.15)
                 return self._generate_gemini(prompt, response_schema, gemini_api_key, temperature)
             except Exception as e:
                 logger.warning(f"⚠️ Google Gemini notice / rate limit ({e}). Automatically failing over to next AI provider...")
@@ -103,13 +122,24 @@ class OllamaClient:
         api_key: str,
         temperature: float = 0.1
     ) -> T:
-        """Calls Groq Cloud API with automatic active model fallback."""
+        """Calls Groq Cloud API with automatic active model fallback and rate limit recovery."""
         clean_key = api_key.strip().strip("'\"")
         configured_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile").strip().strip("'\"")
-        # json_object mode is supported by llama-3 models on Groq — mixtral does NOT support it
-        json_object_models = {"llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192", "llama3-8b-8192"}
-        candidate_models = [configured_model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"]
-        # Deduplicate preserving order
+        json_object_models = {
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "llama-3.1-70b-versatile",
+            "llama3-70b-8192",
+            "llama3-8b-8192"
+        }
+        # Fallback chain: Primary 70B -> Ultra-high RPM 8B Instant -> Secondary models
+        candidate_models = [
+            configured_model,
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "llama-3.1-70b-versatile",
+            "llama3-8b-8192"
+        ]
         models_to_try = []
         for m in candidate_models:
             if m and m not in models_to_try:
@@ -158,9 +188,10 @@ class OllamaClient:
             except Exception as e:
                 last_ex = e
                 err_str = str(e)
-                # 404 = model not found, 400 = bad request (often json_object unsupported) → try next model
-                if "404" in err_str or "400" in err_str:
-                    logger.debug(f"[Groq] Model {model_name} rejected ({err_str[:80]}), trying next...")
+                # 404 = model not found, 400 = bad request, 429 = rate limit, 503 = overloaded
+                if any(code in err_str for code in ("404", "400", "429", "503", "500")):
+                    logger.debug(f"[Groq] Model {model_name} notice ({err_str[:80]}), failing over to next model...")
+                    time.sleep(0.1)
                     continue
                 raise e
 
@@ -173,11 +204,17 @@ class OllamaClient:
         api_key: str,
         temperature: float = 0.1
     ) -> T:
-        """Calls Google Gemini Cloud API with automatic active model fallback."""
+        """Calls Google Gemini Cloud API with official stable model fallback."""
         clean_key = api_key.strip().strip("'\"")
-        configured_model = getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash").strip().strip("'\"")
-        # gemini-2.5-flash is free & most capable; fallback chain uses stable names
-        candidate_models = [configured_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+        configured_model = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash").strip().strip("'\"")
+        # Official Google Gemini production models on AI Studio
+        candidate_models = [
+            configured_model,
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro",
+            "gemini-2.0-flash-exp"
+        ]
         models_to_try = []
         for m in candidate_models:
             if m and m not in models_to_try:
@@ -224,9 +261,10 @@ class OllamaClient:
                             return validated
                 except Exception as e:
                     last_ex = e
-                    if "404" in str(e):
-                        logger.debug(f"[Gemini] {model_name} ({api_version}) not found, trying next...")
-                        continue  # try next api_version or model
+                    err_str = str(e)
+                    if any(code in err_str for code in ("404", "400", "429", "503", "500")):
+                        logger.debug(f"[Gemini] {model_name} ({api_version}) notice ({err_str[:80]}), trying next...")
+                        continue
                     raise e
 
         raise last_ex or RuntimeError("Gemini models exhausted")
@@ -244,3 +282,4 @@ class OllamaClient:
                 return resp.status == 200
         except Exception:
             return False
+

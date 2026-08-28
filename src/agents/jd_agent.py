@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import re
+import time
 from typing import List, Optional
 from datetime import datetime, timezone
 
@@ -122,9 +123,12 @@ class JDAgent:
                     logger.debug(f"JD analysis notice for job {job_id}: {e}")
                     return None
 
-            max_workers = min(8, len(ids_to_analyze)) if ids_to_analyze else 1
+            max_workers = min(6, len(ids_to_analyze)) if ids_to_analyze else 1
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(_analyze_one, j_id): j_id for j_id in ids_to_analyze}
+                futures = {}
+                for j_id in ids_to_analyze:
+                    futures[executor.submit(_analyze_one, j_id)] = j_id
+                    time.sleep(0.04)
                 for future in concurrent.futures.as_completed(futures):
                     result = future.result()
                     if result is not None:
