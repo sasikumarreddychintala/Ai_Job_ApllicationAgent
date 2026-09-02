@@ -57,7 +57,21 @@ class NotificationManager:
                 f"👤 [Find Hiring Managers on LinkedIn]({linkedin_hiring_url})\n\n"
                 f"📄 *Tailored ATS Resume attached below:* 👇"
             )
-            tg.send_message(tg_msg)
+            inline_markup = None
+            if job_id:
+                inline_markup = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "🚀 1-Click Apply", "callback_data": f"apply:{job_id}"},
+                            {"text": "📄 Tailored PDF", "callback_data": f"resume:{job_id}"}
+                        ],
+                        [
+                            {"text": "🧠 Interview Prep", "callback_data": f"prep:{job_id}"},
+                            {"text": "✉️ Cold Email", "callback_data": f"email:{job_id}"}
+                        ]
+                    ]
+                }
+            tg.send_message(tg_msg, reply_markup=inline_markup)
 
             # Auto-compile and deliver tailored PDF resume directly under the link
             pdf_to_send = resume_pdf_path

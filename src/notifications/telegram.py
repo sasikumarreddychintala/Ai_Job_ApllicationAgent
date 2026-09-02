@@ -19,8 +19,8 @@ class TelegramNotifier:
     def is_configured(self) -> bool:
         return bool(self.bot_token and self.chat_id)
 
-    def send_message(self, text: str) -> bool:
-        """Dispatches formatted message to configured Telegram chat."""
+    def send_message(self, text: str, reply_markup: Optional[dict] = None) -> bool:
+        """Dispatches formatted message to configured Telegram chat with optional inline buttons."""
         if not self.is_configured:
             return False
 
@@ -30,6 +30,9 @@ class TelegramNotifier:
             "text": text,
             "parse_mode": "Markdown"
         }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             url,

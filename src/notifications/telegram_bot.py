@@ -123,6 +123,42 @@ class TelegramInteractiveBot:
                         updates = data.get("result", [])
                         for update in updates:
                             self._last_update_id = update.get("update_id", self._last_update_id)
+                            
+                            # 1. Handle Inline Button Callback Queries
+                            cb = update.get("callback_query")
+                            if cb:
+                                cb_id = cb.get("id")
+                                cb_data = cb.get("data", "")
+                                cb_sender_id = str(cb.get("from", {}).get("id", ""))
+                                cb_sender_name = cb.get("from", {}).get("first_name", "User")
+                                
+                                # Acknowledge callback immediately
+                                try:
+                                    ans_url = f"https://api.telegram.org/bot{self.bot_token}/answerCallbackQuery"
+                                    ans_req = urllib.request.Request(
+                                        ans_url,
+                                        data=json.dumps({"callback_query_id": cb_id, "text": "⚡ Processing action..."}).encode("utf-8"),
+                                        headers={"Content-Type": "application/json"}
+                                    )
+                                    urllib.request.urlopen(ans_req, timeout=5)
+                                except Exception:
+                                    pass
+
+                                if ":" in cb_data:
+                                    action, target_id = cb_data.split(":", 1)
+                                    cmd_map = {
+                                        "apply": f"/apply {target_id}",
+                                        "resume": f"/resume {target_id}",
+                                        "prep": f"/prep {target_id}",
+                                        "email": f"/email {target_id}",
+                                        "letter": f"/letter {target_id}",
+                                        "hiring": f"/hiring {target_id}"
+                                    }
+                                    if action in cmd_map:
+                                        self._handle_command(cmd_map[action], cb_sender_id, cb_sender_name)
+                                continue
+
+                            # 2. Handle Text Messages and Documents
                             msg = update.get("message", {})
                             text = (msg.get("text") or "").strip()
                             doc = msg.get("document")

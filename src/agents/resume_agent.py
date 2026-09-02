@@ -142,16 +142,20 @@ class ResumeTailorAgent:
             else:
                 tailored_period = "Jul 2025 - Present"
 
-        # 1. Attempt Cloud LLM generation (Groq Llama 3.3 70B / Gemini 1.5 Flash)
+        # 1. Attempt Cloud LLM generation with Semantic RAG context
         if use_llm:
             try:
+                from src.rag.retriever import CandidateRAGStore
+                rag_store = CandidateRAGStore(self.profile_manager)
+                rag_context = rag_store.retrieve_relevant_context(f"{title} {' '.join(all_target_skills)}", top_k=3)
+
                 prof_json = json.dumps(profile.model_dump(), ensure_ascii=False)
                 jd_json = json.dumps(req_dict, ensure_ascii=False)
-                prompt = render_tailor_prompt(prof_json, jd_json)
+                prompt = render_tailor_prompt(prof_json, jd_json, rag_context=rag_context)
                 tailored = self.ollama.generate_json(prompt, TailoredResumeOutput)
                 if tailored and tailored.summary and len(tailored.highlighted_skills) >= 4:
                     tailored.tailored_period = tailored_period
-                    logger.info(f" Tailored ATS Resume generated via Cloud LLM ({company}). Period: {tailored_period}")
+                    logger.info(f" Tailored ATS Resume generated via Cloud LLM + RAG ({company}). Period: {tailored_period}")
                     return tailored
             except Exception as e:
                 logger.debug(f"Cloud LLM resume tailoring notice ({e}). Using advanced ATS keyword tailoring.")

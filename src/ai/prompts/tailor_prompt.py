@@ -6,6 +6,8 @@ CRITICAL: Only rephrase verified candidate skills and achievements. Do not inven
 Align technical keywords (Frameworks, Databases, Architecture, Distributed Systems, Caching, APIs, Security) to match target JD.
 """
 
+from typing import Optional, List
+
 RESUME_TAILORING_PROMPT_V2 = """
 You are a Principal Technical Recruiter and ATS Optimization Specialist.
 Your goal is to tailor the candidate's verified profile to achieve >95% ATS keyword matching against the target Job Description (JD) while remaining 100% truthful to the candidate's actual work experience.
@@ -46,6 +48,9 @@ JOB DESCRIPTION & REQUIREMENTS:
 {jd_json}
 """
 
-def render_tailor_prompt(profile_json: str, jd_json: str) -> str:
+def render_tailor_prompt(profile_json: str, jd_json: str, rag_context: Optional[list] = None) -> str:
     prompt = RESUME_TAILORING_PROMPT_V2.replace("{profile_json}", profile_json)
-    return prompt.replace("{jd_json}", jd_json)
+    prompt = prompt.replace("{jd_json}", jd_json)
+    if rag_context:
+        prompt += "\n\nTOP RELEVANT CANDIDATE HIGHLIGHTS (SEMANTIC RAG MEMORY):\n" + "\n".join(f"• {c}" for c in rag_context)
+    return prompt
