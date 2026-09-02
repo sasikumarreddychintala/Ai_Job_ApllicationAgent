@@ -49,7 +49,7 @@ class OllamaClient:
     ) -> T:
         """
         Sends prompt to Multi-Tier AI Engine with Automatic Failover:
-        Tier 1: Groq Cloud (Llama 3.3 70B -> Llama 3.1 8B Instant)
+        Tier 1: Groq Cloud (Llama 3.3 70B -> Gemma 2 9B -> Mixtral 8x7B)
         Tier 2: Google Gemini Cloud (Gemini 1.5 Flash -> Gemini 2.0 Flash)
         Tier 3: Local Ollama (Qwen 2.5)
         Tier 4: Built-in Deterministic Rule Engine
@@ -125,20 +125,20 @@ class OllamaClient:
         """Calls Groq Cloud API with automatic active model fallback and rate limit recovery."""
         clean_key = api_key.strip().strip("'\"")
         configured_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile").strip().strip("'\"")
+        # Models that support response_format=json_object on Groq (verified active, 2026)
         json_object_models = {
             "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "llama-3.1-70b-versatile",
             "llama3-70b-8192",
-            "llama3-8b-8192"
+            "mixtral-8x7b-32768",
         }
-        # Fallback chain: Primary 70B -> Ultra-high RPM 8B Instant -> Secondary models
+        # Fallback chain: Primary 70B -> Gemma 2 9B -> Mixtral 8x7B -> Llama3 Groq 8B
+        # (llama-3.1-8b-instant, llama-3.1-70b-versatile, llama3-8b-8192 are DECOMMISSIONED)
         candidate_models = [
             configured_model,
             "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "llama-3.1-70b-versatile",
-            "llama3-8b-8192"
+            "gemma2-9b-it",
+            "mixtral-8x7b-32768",
+            "llama3-groq-8b-8192-tool-use-preview",
         ]
         models_to_try = []
         for m in candidate_models:
@@ -207,13 +207,13 @@ class OllamaClient:
         """Calls Google Gemini Cloud API with official stable model fallback."""
         clean_key = api_key.strip().strip("'\"")
         configured_model = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash").strip().strip("'\"")
-        # Official Google Gemini production models on AI Studio
+        # Official Google Gemini production models on AI Studio (verified active, 2026)
         candidate_models = [
             configured_model,
             "gemini-1.5-flash",
             "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
             "gemini-1.5-pro",
-            "gemini-2.0-flash-exp"
         ]
         models_to_try = []
         for m in candidate_models:
