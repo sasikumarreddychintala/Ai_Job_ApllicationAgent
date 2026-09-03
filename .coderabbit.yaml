@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+version: "2"
+language: "en-US"
+
+tone_instructions: >
+  You are an expert Senior Python & AI Systems Architect reviewing this automated
+  Job Application Agent codebase. Be constructive, concise, and prioritize:
+  1. Memory efficiency (under 512MB RAM constraints on Render free tier).
+  2. Async/threading safety & non-blocking execution.
+  3. Playwright browser automation resilience & anti-bot stealth integrity.
+  4. ATS resume formatting truthfulness and ReportLab PDF compilation stability.
+  5. Security (sanitizing sensitive PII, avoiding raw SQL injection, secure handling of API keys).
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+    ignore_title_keywords:
+      - "WIP"
+      - "Draft"
+      - "[skip ci]"
+  
+  path_filters:
+    - "!data/**"
+    - "!*.db"
+    - "!*.sqlite3"
+    - "!logs/**"
+    - "!tailored_resumes/**"
+    - "!.pytest_cache/**"
+    - "!__pycache__/**"
+    - "!*.pdf"
+
+  path_instructions:
+    - path: "src/automation/**"
+      instructions: >
+        Review for browser stealth, resilience against DOM selector changes,
+        graceful error handling on navigation timeouts, and atomic state locking to prevent duplicate form submissions.
+    - path: "src/resume/**"
+      instructions: >
+        Ensure resume tailoring strictly preserves candidate truthfulness (no fabricated credentials).
+        Check ReportLab document template generation for memory leaks and ATS compliance.
+    - path: "src/jobs/**"
+      instructions: >
+        Verify web scraper rate-limiting, URL liveness verification, fingerprint deduplication,
+        and thread-safe SQLite operations.
+    - path: "src/ui/**"
+      instructions: >
+        Check HTTP endpoints for input validation, bounded queue sizes (to prevent memory leaks),
+        and graceful SSE streaming disconnects.
+
+chat:
+  auto_reply: true

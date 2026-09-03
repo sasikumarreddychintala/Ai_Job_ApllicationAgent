@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "coderabbit": {
+      "command": "npx",
+      "args": ["-y", "coderabbitai-mcp"],
+      "env": {
+        "GITHUB_TOKEN": "BEFORE_USE_REPLACE_WITH_YOUR_GITHUB_TOKEN",
+        "CODERABBIT_API_KEY": "BEFORE_USE_REPLACE_WITH_YOUR_KEY"
+      }
+    }
+  }
+}
