@@ -1408,7 +1408,7 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(FAVICON_SVG.encode("utf-8"))
             return
 
-        if path in ("/healthz", "/ping", "/api/health"):
+        if path in ("/health", "/healthz", "/ping", "/api/health"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-cache")
