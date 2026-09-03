@@ -260,11 +260,40 @@ class JobFinder:
     def _save_job_to_db(self, conn: sqlite3.Connection, job: NormalizedJob) -> int:
         """Persists normalized job record and initial DISCOVERED application state into SQLite.
         Returns 0 (skipped) or the new job DB id.
+        Performs a lightweight URL liveness check before saving — prevents 404 dead links from reaching Telegram.
         """
         # Pre-filter: block senior/non-tech titles at discovery time
         if _is_title_blocked(job.title):
             logger.debug(f"[PRE-FILTER] Skipping title before DB save: '{job.title}'")
             return 0
+
+        # URL Liveness Check — HEAD request to verify the job page actually exists
+        # Skip check for local/test URLs and fixture sources to not break tests
+        job_url = job.url or ""
+        is_test_url = (
+            not job_url.startswith("http")
+            or "localhost" in job_url
+            or "127.0.0.1" in job_url
+            or job.source in ("local_fixture", "pilot_url")
+        )
+        if not is_test_url and job_url:
+            try:
+                import urllib.request as _urlreq
+                head_req = _urlreq.Request(job_url, method="HEAD")
+                head_req.add_header("User-Agent", "Mozilla/5.0 (compatible; JobAgent/1.0)")
+                with _urlreq.urlopen(head_req, timeout=5) as r:
+                    status = r.status
+                if status in (404, 410, 400):
+                    logger.debug(f"[URL-DEAD] Skipping job '{job.title}' — URL returned HTTP {status}: {job_url}")
+                    return 0
+            except Exception as ue:
+                err_str = str(ue).lower()
+                # 404 / 410 = job removed, 403 is gated (keep), network errors = keep (don't lose valid jobs)
+                if "404" in err_str or "410" in err_str:
+                    logger.debug(f"[URL-DEAD] Skipping '{job.title}' — {ue}")
+                    return 0
+                # Any other error (timeout, SSL, etc.) → still save job (don't discard on network issues)
+
 
         with conn:
             cursor = conn.cursor()

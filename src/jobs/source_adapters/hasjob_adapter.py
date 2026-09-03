@@ -7,37 +7,46 @@ from src.jobs.source_adapters.base_adapter import BaseJobAdapter
 from src.utils.logger import logger
 
 class HasjobAdapter(BaseJobAdapter):
-    """Fetches developer & AI opportunities from Hasjob (HasGeek Developer Community)."""
+    """Fetches live developer & AI opportunities from Hasjob (HasGeek Developer Community) via their public API."""
+
+    BASE_URL = "https://hasjob.co/api/1/jobs"
 
     def __init__(self):
         super().__init__(source_name="hasjob")
 
     def fetch_jobs(self, query: str = "Python Developer", location: str = "Bengaluru", time_range: str = "3d") -> List[RawJobListing]:
-        results = [
-            RawJobListing(
-                title="Junior Python / FastAPI Backend Developer",
-                company="HasGeek Engineering",
-                location="Bengaluru, Karnataka",
-                description="Looking for passionate Python engineers with experience in FastAPI, PostgreSQL, and REST API architecture.",
-                url="https://hasjob.co/hasgeek/junior-python-developer",
-                source="hasjob"
-            ),
-            RawJobListing(
-                title="AI Systems Developer (0-2 Yrs)",
-                company="Karya Inc",
-                location="Bengaluru, Karnataka",
-                description="Help develop multilingual AI dataset pipelines and LLM tooling with Python, Pandas, and LangChain.",
-                url="https://hasjob.co/karya/ai-systems-developer",
-                source="hasjob"
-            ),
-            RawJobListing(
-                title="Associate Software Engineer (Python, Django)",
-                company="Frappe Technologies",
-                location="Bengaluru / Remote",
-                description="Build scalable open-source SaaS platforms and database models using Python, MySQL, and Docker.",
-                url="https://hasjob.co/frappe/associate-software-engineer",
-                source="hasjob"
+        results = []
+        try:
+            params = urllib.parse.urlencode({
+                "q": query or "Python",
+                "l": location or "Bengaluru",
+                "c": "tech",   # category: tech jobs only
+            })
+            url = f"{self.BASE_URL}?{params}"
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; JobAgent/1.0)",
+                    "Accept": "application/json"
+                }
             )
-        ]
-        logger.info(f" Hasjob adapter fetched {len(results)} community-verified listings.")
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+            jobs = data if isinstance(data, list) else data.get("jobs", [])
+            for job in jobs[:20]:
+                job_url = job.get("url", "") or job.get("apply_url", "")
+                if not job_url or not job_url.startswith("http"):
+                    continue
+                results.append(RawJobListing(
+                    title=job.get("title", ""),
+                    company=job.get("company", ""),
+                    location=job.get("location") or location,
+                    description=job.get("description", "") or job.get("blurb", ""),
+                    url=job_url,
+                    source="hasjob"
+                ))
+            logger.info(f" Hasjob adapter fetched {len(results)} live listings.")
+        except Exception as e:
+            logger.warning(f"Hasjob adapter notice: {e}")
         return results
