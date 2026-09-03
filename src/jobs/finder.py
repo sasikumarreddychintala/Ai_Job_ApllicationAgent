@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from typing import List, Optional
 from config import settings
@@ -355,45 +356,6 @@ class JobFinder:
                 "INSERT INTO applications (job_id, status) VALUES (?, 'DISCOVERED')",
                 (job_db_id,)
             )
-
-            # Instant Initial Match Scoring (6ms) — guarantees every job immediately has a real Match Score
-            try:
-                from src.agents.jd_agent import JDAgent
-                from src.matching.scorer import calculate_match_score
-                from src.ai.schemas import ParsedJDRequirements
-                from src.resume.profile import ProfileManager
-
-                pm = getattr(self, "_cached_pm", None)
-                if not pm:
-                    self._cached_pm = ProfileManager()
-                profile = self._cached_pm.load_profile()
-
-                regex_skills = JDAgent._regex_preextract_skills(job.description or "")
-                req = ParsedJDRequirements(
-                    title=job.title,
-                    company=job.company,
-                    location=job.location,
-                    required_skills=regex_skills,
-                    min_experience_years=1.0,
-                    keywords=regex_skills
-                )
-                eval_res = calculate_match_score(profile, req)
-                new_status = "QUALIFIED" if eval_res.overall_score >= 70 else "SKIPPED"
-                breakdown_json = json.dumps(eval_res.score_breakdown.model_dump())
-
-                cursor.execute(
-                    """
-                    INSERT INTO job_matches (job_id, overall_score, decision, breakdown_json)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (job_db_id, eval_res.overall_score, eval_res.decision, breakdown_json)
-                )
-                cursor.execute(
-                    "UPDATE applications SET status = ? WHERE job_id = ?",
-                    (new_status, job_db_id)
-                )
-            except Exception as e:
-                logger.debug(f"Instant scoring notice for job #{job_db_id}: {e}")
 
             return job_db_id
 
