@@ -154,10 +154,56 @@ class PilotRunner:
                             pass
                         final_status = "READY_TO_SUBMIT"
                     else:
-                        with conn:
-                            conn.execute("UPDATE applications SET status = 'SUBMITTED', applied_at = CURRENT_TIMESTAMP WHERE job_id = ?", (job_id,))
-                        logger.info(f" [SUBMITTED] Live application submitted for '{title}' at {comp}.")
-                        final_status = "SUBMITTED"
+                        # [IMPROVEMENT] Pre-Submit Field Validation
+                        # Check that critical visible inputs are non-empty before clicking submit
+                        submit_blocked = False
+                        try:
+                            critical_inputs = page.query_selector_all("input[required]:not([type='hidden']), textarea[required]")
+                            empty_fields = []
+                            for inp in critical_inputs:
+                                val = inp.input_value() if inp.is_visible() else ""
+                                label = inp.get_attribute("placeholder") or inp.get_attribute("name") or inp.get_attribute("id") or "unknown"
+                                if not (val or "").strip():
+                                    empty_fields.append(label)
+                            if empty_fields:
+                                logger.warning(f" [PRE-SUBMIT] {len(empty_fields)} required field(s) empty: {empty_fields[:5]}. Aborting live submit.")
+                                submit_blocked = True
+                                with conn:
+                                    conn.execute("UPDATE applications SET status = 'FORM_INCOMPLETE' WHERE job_id = ?", (job_id,))
+                        except Exception as ve:
+                            logger.debug(f"Pre-submit validation notice: {ve}")
+
+                        if not submit_blocked:
+                            with conn:
+                                conn.execute("UPDATE applications SET status = 'SUBMITTED', applied_at = CURRENT_TIMESTAMP WHERE job_id = ?", (job_id,))
+
+                            # [IMPROVEMENT] Post-Submit Confirmation Capture
+                            # Verify the page shows a success signal after submission
+                            try:
+                                page.wait_for_timeout(3000)  # wait for redirect / thank-you page
+                                page_body = (page.inner_text("body") or "").lower()
+                                success_signals = [
+                                    "thank you", "thanks for applying", "application submitted",
+                                    "application received", "we'll be in touch", "we will be in touch",
+                                    "successfully submitted", "your application", "confirmation"
+                                ]
+                                confirmed = any(sig in page_body for sig in success_signals)
+                                if confirmed:
+                                    logger.info(f" [SUBMITTED ✓] Confirmation detected on page for '{title}' at {comp}.")
+                                    final_status = "SUBMITTED"
+                                else:
+                                    logger.warning(
+                                        f" [SUBMITTED ⚠] No confirmation text found after submit for '{title}' at {comp}. "
+                                        f"Application may still be processing — check manually."
+                                    )
+                                    final_status = "SUBMITTED_UNCONFIRMED"
+                                    with conn:
+                                        conn.execute("UPDATE applications SET status = 'SUBMITTED_UNCONFIRMED' WHERE job_id = ?", (job_id,))
+                            except Exception as ce:
+                                logger.debug(f"Post-submit confirmation notice: {ce}")
+                                final_status = "SUBMITTED"
+                        else:
+                            final_status = "FORM_INCOMPLETE"
 
                     return {
                         "status": "SUCCESS",
@@ -171,3 +217,4 @@ class PilotRunner:
 
         finally:
             conn.close()
+

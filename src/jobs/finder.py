@@ -40,6 +40,52 @@ from src.jobs.source_adapters.otta_adapter import OttaJobAdapter
 from src.jobs.source_adapters.dynamite_adapter import DynamiteJobsAdapter
 from src.jobs.source_adapters.aijobs_adapter import AIJobsNetAdapter
 
+# ---------------------------------------------------------------------------
+# Role Synonym Expansion — ensures all equivalent job titles are searched
+# ---------------------------------------------------------------------------
+ROLE_SYNONYMS: dict = {
+    "ai engineer": [
+        "ai engineer", "ml engineer", "llm engineer", "genai engineer",
+        "machine learning engineer", "applied ai engineer", "ai developer",
+        "nlp engineer", "deep learning engineer", "research engineer",
+    ],
+    "software engineer": [
+        "software engineer", "software developer", "backend engineer",
+        "python developer", "backend developer", "python engineer",
+        "api developer", "full stack developer", "fullstack engineer",
+    ],
+    "data engineer": [
+        "data engineer", "etl developer", "data pipeline engineer",
+        "big data engineer", "analytics engineer",
+    ],
+    "data scientist": [
+        "data scientist", "ml researcher", "applied scientist",
+        "quantitative analyst", "data analyst",
+    ],
+    "devops engineer": [
+        "devops engineer", "cloud engineer", "platform engineer",
+        "site reliability engineer", "sre", "infrastructure engineer",
+    ],
+}
+
+def expand_query_terms(query: str) -> list:
+    """
+    Expands a single query string into all known role synonym variants.
+    Returns a deduplicated list of query strings to search across all adapters.
+    e.g. "ai engineer" → ["ai engineer", "ml engineer", "llm engineer", ...]
+    Falls back to [query] if no synonym group matches.
+    """
+    q_lower = query.lower().strip()
+    for canonical, synonyms in ROLE_SYNONYMS.items():
+        if q_lower == canonical or q_lower in synonyms:
+            return synonyms
+    # Partial match: if query contains any canonical key
+    for canonical, synonyms in ROLE_SYNONYMS.items():
+        if canonical in q_lower or any(s in q_lower for s in synonyms):
+            return synonyms
+    return [query] if query else [""]
+
+
 # Title-level pre-filters: block these before even saving to DB, to avoid wasted LLM calls.
 _SENIOR_TITLE_KEYWORDS = [
     "senior", "sr.", " lead", "staff ", "principal", "architect",
@@ -148,44 +194,55 @@ class JobFinder:
         return cls(adapters=adapters, db_path=db_path)
 
     def discover_jobs(self, query: str = "", location: str = "", time_range: str = "3d") -> List[NormalizedJob]:
-        """Discovers, normalizes, deduplicates, and persists unique job listings concurrently across all adapters."""
+        """Discovers, normalizes, deduplicates, and persists unique job listings concurrently across all adapters.
+        Automatically expands the query into all synonym variants (e.g. 'AI Engineer' → 10 role variants)
+        to maximise relevant job discovery before deduplication.
+        """
         import concurrent.futures
         discovered_new: List[NormalizedJob] = []
         conn = init_db(self.db_path)
 
-        def _fetch_from_adapter(adapter: BaseJobAdapter):
-            logger.info(f" Discovering jobs using adapter: '{adapter.source_name}' (Recency: {time_range})...")
+        # Expand query into all role synonyms so adapters search all equivalent titles
+        query_variants = expand_query_terms(query)
+        logger.info(f" Query '{query}' expanded to {len(query_variants)} synonym variants: {query_variants}")
+
+        def _fetch_from_adapter(adapter: BaseJobAdapter, q: str):
+            logger.info(f" Discovering jobs using adapter: '{adapter.source_name}' query='{q}' (Recency: {time_range})...")
             try:
                 if hasattr(adapter, "fetch_jobs"):
                     import inspect
                     sig = inspect.signature(adapter.fetch_jobs)
                     if "time_range" in sig.parameters:
-                        raw = adapter.fetch_jobs(query, location, time_range=time_range)
+                        raw = adapter.fetch_jobs(q, location, time_range=time_range)
                     else:
-                        raw = adapter.fetch_jobs(query, location)
+                        raw = adapter.fetch_jobs(q, location)
                 else:
                     raw = []
-                logger.info(f" Fetched {len(raw)} listings from '{adapter.source_name}'.")
+                logger.info(f" Fetched {len(raw)} listings from '{adapter.source_name}' (query='{q}').")
                 return raw
             except Exception as e:
                 logger.warning(f"Adapter '{adapter.source_name}' notice: {e}")
                 return []
 
         try:
-            # Parallel scraping across all source adapters with 16 high-performance threads
-            # Stream & persist jobs progressively as each adapter completes
+            # Build all (adapter, query_variant) pairs — each adapter runs for every synonym
+            fetch_tasks = [
+                (adapter, q)
+                for adapter in self.adapters
+                for q in query_variants
+            ]
+
+            # Parallel scraping across all source adapters × all query variants
             with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
-                futures = [executor.submit(_fetch_from_adapter, ad) for ad in self.adapters]
+                futures = [executor.submit(_fetch_from_adapter, ad, q) for ad, q in fetch_tasks]
                 for future in concurrent.futures.as_completed(futures):
                     try:
                         raw_batch = future.result()
                         for raw_job in raw_batch:
                             norm_job = normalize_job_listing(raw_job)
-                            # Deduplication check
+                            # Deduplication check — prevents same job from synonym searches being saved twice
                             if is_job_duplicate(norm_job.fingerprint, norm_job.url, conn):
                                 continue
-                            # Save new unique job to database immediately
-                            # Returns 0 if pre-filtered (senior/non-tech title), >0 if saved
                             job_id = self._save_job_to_db(conn, norm_job)
                             if job_id > 0:
                                 discovered_new.append(norm_job)
@@ -196,6 +253,7 @@ class JobFinder:
             return discovered_new
         finally:
             conn.close()
+
 
 
 

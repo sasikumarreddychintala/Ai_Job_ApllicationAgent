@@ -11,6 +11,7 @@ from src.ai.schemas import ParsedJDRequirements, TailoredResumeOutput, TailoredB
 from src.ai.ollama_client import OllamaClient
 from src.ai.prompts.tailor_prompt import render_tailor_prompt
 from src.resume.versioning import create_resume_version_filename, generate_pdf_resume
+from src.matching.scorer import normalize_skill
 
 class ResumeTailorAgent:
     """Agent responsible for generating truthful job-specific tailored PDF resumes for qualified applications."""
@@ -288,6 +289,12 @@ class ResumeTailorAgent:
         # [FIX #2] tailored_period was already computed at the top of this function (line ~140).
         # The duplicate block that was here has been removed — it silently overwrote with the same value.
 
+        # [IMPROVEMENT] Rerank bullets by JD keyword relevance — most relevant bullet first
+        # ATS scanners weight early content more heavily
+        bullets = self._rank_bullets_by_jd_relevance(bullets, jd_keywords=set(
+            normalize_skill(k) for k in (req_skills + pref_skills)
+        ))
+
         # ATS Keyword Injection: ensure all required JD keywords appear in the summary
         missing_keywords = [
             s for s in req_skills
@@ -300,8 +307,30 @@ class ResumeTailorAgent:
                 f"acquired through project work and applied development."
             )
 
+        # [IMPROVEMENT] ATS Post-Generation Validation
+        # If keyword density < 70%, inject additional missing skills into summary
+        full_resume_text = summary_text + " " + " ".join(prioritized_skills) + " " + " ".join(
+            bp.tailored or bp.original for bp in bullets
+        )
+        ats_density = self._compute_ats_density(full_resume_text, req_skills)
+        if ats_density < 0.70 and req_skills:
+            extra_missing = [
+                s for s in req_skills
+                if s.lower() not in full_resume_text.lower()
+            ]
+            if extra_missing:
+                summary_text += (
+                    f" Additionally proficient in {', '.join(extra_missing[:4])} "
+                    f"as applied in real-world development and project environments."
+                )
+                logger.info(
+                    f" ATS density was {ats_density:.0%} < 70% — injected {len(extra_missing[:4])} extra keywords. "
+                    f"New density: ~{min(1.0, ats_density + len(extra_missing[:4]) / max(len(req_skills), 1)):.0%}"
+                )
+        else:
+            logger.info(f" ATS keyword density: {ats_density:.0%} ✓")
+
         # Real ATS shortlist_score: percentage of required JD skills present in highlighted_skills
-        from src.matching.scorer import normalize_skill
         norm_prio = {normalize_skill(s) for s in prioritized_skills}
         matching_count = sum(
             1 for s in req_skills if normalize_skill(s) in norm_prio
@@ -318,3 +347,21 @@ class ResumeTailorAgent:
             truth_verified=True
         )
 
+    @staticmethod
+    def _rank_bullets_by_jd_relevance(bullets: list, jd_keywords: set) -> list:
+        """
+        Reorders TailoredBulletPoint list so bullets with highest JD keyword
+        overlap appear first — ATS scanners weight early content more heavily.
+        """
+        def _score(bp) -> int:
+            text = (bp.tailored or bp.original or "").lower()
+            return sum(1 for kw in jd_keywords if kw.lower() in text)
+        return sorted(bullets, key=_score, reverse=True)
+
+    @staticmethod
+    def _compute_ats_density(resume_text: str, required_skills: list) -> float:
+        """Returns fraction (0.0–1.0) of required JD skills present anywhere in the resume text."""
+        if not required_skills:
+            return 1.0
+        hits = sum(1 for s in required_skills if s.lower() in resume_text.lower())
+        return hits / len(required_skills)

@@ -146,8 +146,59 @@ class JDAgent:
         default_company: str,
         default_loc: str
     ) -> ParsedJDRequirements:
-        """Deterministic fallback requirement parser for job descriptions."""
+        """Public alias for _extract_requirements — kept for backwards compatibility with tests and callers."""
         return self._extract_requirements(raw_jd, default_title, default_company, default_loc)
+
+    # -----------------------------------------------------------------------
+    # Comprehensive regex-based skill keyword list for pre-extraction pass
+    # -----------------------------------------------------------------------
+    _REGEX_TECH_SKILLS = [
+        # Languages
+        "Python", "Java", "JavaScript", "TypeScript", "Go", "Golang", "Rust", "C\\+\\+", "C#", "Ruby", "Scala", "Kotlin", "Swift",
+        # Frameworks / Libraries
+        "FastAPI", "Django", "Flask", "Spring Boot", "Node\\.js", "Express", "React", "Vue", "Angular", "Next\\.js",
+        "LangChain", "LlamaIndex", "LangGraph", "CrewAI", "Haystack",
+        "PyTorch", "TensorFlow", "Keras", "scikit-learn", "Hugging Face", "Transformers",
+        "Pandas", "NumPy", "SciPy", "Matplotlib", "Seaborn",
+        # Databases
+        "PostgreSQL", "MySQL", "SQLite", "MongoDB", "Redis", "Elasticsearch", "DynamoDB", "Cassandra",
+        "SQLAlchemy", "Prisma", "Sequelize",
+        # Cloud & Infra
+        "AWS", "GCP", "Azure", "Docker", "Kubernetes", "Terraform", "Ansible", "Helm",
+        "EC2", "S3", "RDS", "Lambda", "CloudFormation", "EKS", "ECS",
+        # AI/ML
+        "LLM", "RAG", "Generative AI", "GenAI", "Prompt Engineering", "Embeddings",
+        "OpenAI", "Ollama", "Groq", "Gemini", "Claude", "BERT", "GPT",
+        "Computer Vision", "NLP", "MLOps", "Vector Database", "Pinecone", "Weaviate", "ChromaDB",
+        # Messaging / Streaming
+        "Kafka", "Apache Kafka", "RabbitMQ", "Celery", "Redis Streams", "Pub/Sub",
+        # APIs / Protocols
+        "REST", "REST APIs", "GraphQL", "gRPC", "WebSocket", "OAuth", "JWT", "OpenAPI",
+        # DevOps / CI/CD
+        "Git", "GitHub", "GitLab", "CI/CD", "Jenkins", "GitHub Actions", "CircleCI",
+        "Linux", "Bash", "Shell",
+        # Testing
+        "PyTest", "Jest", "Unit Testing", "TDD", "BDD", "Selenium", "Playwright",
+        # Architecture
+        "Microservices", "System Design", "Distributed Systems", "Event-Driven", "CQRS", "DDD",
+        "Agile", "Scrum", "SOLID",
+    ]
+
+    @classmethod
+    def _regex_preextract_skills(cls, jd_text: str) -> list:
+        """
+        Fast regex pass over raw JD text to extract known tech skills.
+        Runs BEFORE LLM call and results are merged with LLM output.
+        Catches skills that LLMs sometimes miss in long or complex JDs.
+        """
+        found = []
+        for skill in cls._REGEX_TECH_SKILLS:
+            pattern = r'\b' + skill + r'\b'
+            if re.search(pattern, jd_text, re.IGNORECASE):
+                # Use the canonical casing from _REGEX_TECH_SKILLS list
+                canonical = re.sub(r'\\', '', skill)  # remove regex escape chars
+                found.append(canonical)
+        return found
 
     def _extract_requirements(
         self,
@@ -156,8 +207,17 @@ class JDAgent:
         default_company: str,
         default_loc: str
     ) -> ParsedJDRequirements:
-        """High-speed requirement extraction with Cloud AI (Groq/Gemini) and ATS fallback."""
-        # 1. Try Cloud AI / LLM extraction (Groq Llama 3.3 70B / Gemini 1.5 Flash)
+        """High-speed requirement extraction with regex pre-pass + Cloud AI merge + ATS fallback.
+        Step 1: Regex pre-extraction of known tech skills (fast, deterministic)
+        Step 2: Cloud AI / LLM extraction (Groq / Gemini)
+        Step 3: Merge LLM output + regex skills → never miss a skill
+        Step 4: Full deterministic fallback if AI completely fails
+        """
+        # Step 1: Regex pre-extraction (always runs, zero token cost)
+        regex_skills = self._regex_preextract_skills(raw_jd)
+        logger.info(f" Regex pre-extractor found {len(regex_skills)} skills: {regex_skills[:8]}{'...' if len(regex_skills) > 8 else ''}")
+
+        # Step 2 & 3: Try Cloud AI / LLM extraction + merge with regex skills
         try:
             prompt = render_jd_prompt(raw_jd)
             parsed = self.ollama.generate_json(prompt, ParsedJDRequirements)
@@ -168,20 +228,36 @@ class JDAgent:
                     parsed.company = default_company
                 if not parsed.location:
                     parsed.location = default_loc
-                logger.info(f" Extracted {len(parsed.required_skills)} skills via Cloud AI Engine ({default_company}).")
+
+                # Merge: add regex-found skills not already in LLM output
+                llm_skills_lower = {s.lower() for s in parsed.required_skills}
+                for rs in regex_skills:
+                    if rs.lower() not in llm_skills_lower:
+                        parsed.required_skills.append(rs)
+
+                # Also merge into keywords
+                kw_lower = {k.lower() for k in (parsed.keywords or [])}
+                for rs in regex_skills:
+                    if rs.lower() not in kw_lower:
+                        parsed.keywords = (parsed.keywords or []) + [rs]
+
+                llm_only_count = len(parsed.required_skills) - len(regex_skills)
+                logger.info(
+                    f" Extracted {len(parsed.required_skills)} skills via Cloud AI + Regex merge ({default_company}). "
+                    f"LLM found ~{llm_only_count}, Regex added {len(regex_skills)} (total after dedup)."
+                )
                 return parsed
         except Exception as e:
             logger.debug(f"AI JD extraction notice ({e}). Using deterministic rule analyzer.")
 
-        # 2. Deterministic Fallback
-        known_skills = [
+        # Step 4: Full Deterministic Fallback (uses regex_skills already extracted)
+        extracted_skills = regex_skills if regex_skills else [
             "Python", "FastAPI", "Django", "Flask", "PostgreSQL", "MySQL", "SQLAlchemy",
             "Redis", "Kafka", "Docker", "Kubernetes", "AWS", "REST", "GraphQL",
             "Microservices", "CI/CD", "Linux", "Git", "Celery", "RabbitMQ", "SQL",
             "JavaScript", "TypeScript", "React", "LangChain", "LLM", "System Design",
             "AsyncIO", "Concurrency", "JWT", "OAuth", "OOP", "PyTest"
         ]
-        extracted_skills = [s for s in known_skills if re.search(r"\b" + re.escape(s) + r"\b", raw_jd, re.I)]
         if not extracted_skills:
             extracted_skills = ["Python", "Software Engineering"]
 
@@ -207,4 +283,5 @@ class JDAgent:
             hard_constraints=hard_constraints,
             keywords=extracted_skills
         )
+
 

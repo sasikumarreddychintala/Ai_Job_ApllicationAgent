@@ -274,10 +274,11 @@ def calculate_match_score(
 
     if is_early_career or min_years <= 2.0:
         experience_fit_score = 20
-    elif min_years <= 3.0:
-        experience_fit_score = 15
     else:
-        experience_fit_score = 5
+        # Linear interpolation: smooth score based on how close candidate is to required years
+        # e.g. 2yrs candidate vs 3yr req → round(2/3 * 20) = 13 (was 5 before)
+        exp_ratio = min(1.0, total_exp_years / max(min_years, 0.5))
+        experience_fit_score = round(exp_ratio * 20)
 
     # 6. Project Relevance (0–15 pts) — JD keyword overlap
     jd_keywords_set: Set[str] = {normalize_skill(k) for k in requirements.keywords if k.strip()}
@@ -313,8 +314,18 @@ def calculate_match_score(
     jd_loc = requirements.location or ""
     location_score = 5 if _location_matches(cand_loc, jd_loc) else 2
 
-    # 10. Other Factors (0–5 pts)
-    other_factors_score = 5 if candidate.certifications else 4
+    # 10. Other Factors: Title Relevance + Certifications (0–5 pts)
+    # Title relevance gate: reward on-target roles, penalize off-category
+    TARGET_ROLE_KEYWORDS = {
+        "ai", "ml", "machine learning", "llm", "nlp", "data scientist", "applied",
+        "python", "backend", "software", "data engineer", "full stack", "fullstack",
+        "genai", "generative", "rag", "research", "developer", "engineer"
+    }
+    jd_title_words = set((requirements.title or "").lower().split())
+    title_relevance = any(kw in (requirements.title or "").lower() for kw in TARGET_ROLE_KEYWORDS)
+    title_bonus = 3 if title_relevance else 0
+    cert_bonus = 2 if candidate.certifications else 1
+    other_factors_score = min(5, title_bonus + cert_bonus)
 
     # Total Score
     total_score = (
