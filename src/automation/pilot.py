@@ -43,7 +43,17 @@ class PilotRunner:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=run_headless)
                 page = browser.new_page()
-                page.goto(url, timeout=30000)
+                # Use domcontentloaded (not 'load') — SPA sites like workatastartup
+                # fire DOMContentLoaded long before all JS bundles finish loading.
+                # 60s timeout handles slow startup company boards.
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                except Exception:
+                    # Fallback: networkidle gives SPA more time to hydrate
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=15000)
+                    except Exception:
+                        pass  # Use whatever content is available
                 page_title = page.title() or "Job Position"
                 page_text = page.inner_text("body")[:4000]
                 browser.close()
@@ -128,7 +138,12 @@ class PilotRunner:
 
             with BrowserManager(headless=run_headless, slow_mo=500 if not run_headless else 0) as page:
                 try:
-                    page.goto(url)
+                    page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                    # Extra wait for SPA hydration (React/Vue boards need JS to render forms)
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=10000)
+                    except Exception:
+                        pass
                 except Exception as e:
                     logger.warning(f"Browser navigation notice: {e}")
 

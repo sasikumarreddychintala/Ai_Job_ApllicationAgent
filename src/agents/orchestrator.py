@@ -99,18 +99,22 @@ class ApplicationOrchestrator:
 
                 profile = self.profile_manager.load_profile()
 
-                # Generate answers for basic questions
+                # Atomic claim: only proceed if status is still RESUME_READY (not already claimed by another worker)
+                with conn:
+                    claimed = conn.execute(
+                        "UPDATE applications SET status = 'APPLICATION_STARTED' WHERE job_id = ? AND status = 'RESUME_READY'",
+                        (job_id,)
+                    ).rowcount
+                if claimed == 0:
+                    logger.debug(f"[SKIP-DUPLICATE] Job ID {job_id} already claimed by another worker. Skipping.")
+                    continue
+                save_application_checkpoint(job_id, "APPLICATION_STARTED", {"url": url}, conn=conn)
                 answers = [
                     answer_agent.answer_question("Full Name", job_id=job_id, conn=conn),
                     answer_agent.answer_question("Email Address", job_id=job_id, conn=conn),
                     answer_agent.answer_question("Phone Number", job_id=job_id, conn=conn),
                     answer_agent.answer_question("Work Authorization", job_id=job_id, conn=conn)
                 ]
-
-                # Update state to APPLICATION_STARTED
-                with conn:
-                    conn.execute("UPDATE applications SET status = 'APPLICATION_STARTED' WHERE job_id = ?", (job_id,))
-                save_application_checkpoint(job_id, "APPLICATION_STARTED", {"url": url}, conn=conn)
 
                 pdf_file_path = Path(pdf_path)
 
@@ -121,7 +125,12 @@ class ApplicationOrchestrator:
                 try:
                     with BrowserManager() as page:
                         try:
-                            page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                            # Extra wait for SPA hydration (workatastartup, lever.co etc.)
+                            try:
+                                page.wait_for_load_state("networkidle", timeout=10000)
+                            except Exception:
+                                pass
                         except Exception as nav_err:
                             logger.warning(f"Could not navigate to URL '{url}' ({nav_err}). Logging checkpoint.")
                             with conn:
