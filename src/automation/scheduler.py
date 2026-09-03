@@ -49,8 +49,10 @@ class MorningJobScheduler:
         finder = JobFinder.create_multi_source_finder()
         queries_to_run = [query] if query else [
             "Junior AI Engineer 0-2 years",
-            "Associate Software Engineer Python 0-2 years",
+            "Associate Software Engineer 0-2 years",
+            "Software Developer Python 0-2 years",
             "Python Backend Developer 0-2 years",
+            "Junior Full Stack Developer 0-2 years",
             "Junior Data Analyst Python 0-2 years"
         ]
         discovered = []

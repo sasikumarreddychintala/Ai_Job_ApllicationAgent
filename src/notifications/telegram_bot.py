@@ -249,6 +249,8 @@ class TelegramInteractiveBot:
         btn_map = {
             "🔥 top matches": "/top",
             "🤖 ai / genai": "/ai",
+            "💻 software & dev": "/swe",
+            "💻 developer jobs": "/swe",
             "🐍 python jobs": "/swe",
             "📊 data analyst": "/data",
             "🌱 fresher (0-1 yr)": "/fresher",
@@ -270,7 +272,7 @@ class TelegramInteractiveBot:
         keyboard_markup = {
             "keyboard": [
                 [{"text": "🔥 Top Matches"}, {"text": "🤖 AI / GenAI"}],
-                [{"text": "🐍 Python Jobs"}, {"text": "📊 Data Analyst"}],
+                [{"text": "💻 Software & Dev"}, {"text": "📊 Data Analyst"}],
                 [{"text": "🌱 Fresher (0-1 Yr)"}, {"text": "💼 Junior (1-2 Yrs)"}],
                 [{"text": "🚀 Auto-Apply"}, {"text": "⏰ Follow-ups"}],
                 [{"text": "📊 Live Stats"}, {"text": "⭐ /top"}]
@@ -283,9 +285,10 @@ class TelegramInteractiveBot:
             help_msg = (
                 f"👋 *Hello {sender_name}! I am your AI Job Application Assistant.*\n\n"
                 f"Here is what you can do with 1-Tap from your phone:\n\n"
+                f"💻 `/swe [location]` ↳ Software Engineer & Developer roles (scored against resume)\n"
+                f"🤖 `/ai [location]` ↳ AI, GenAI & LLM Developer roles\n"
                 f"🌱 `/fresher [location]` ↳ Fresher & 0–1 Year openings\n"
                 f"💼 `/junior [location]` ↳ 1–2 Years Experience roles\n"
-                f"🤖 `/ai [location]` ↳ AI, GenAI & LLM Developer roles\n"
                 f"📊 `/data [location]` ↳ Data Analyst & BI roles\n"
                 f"⭐ `/top` ↳ Top 5 highest matching qualified jobs\n"
                 f"📄 `/resume <job_id>` ↳ Compiles & sends tailored PDF resume\n"
@@ -467,10 +470,9 @@ class TelegramInteractiveBot:
             threading.Thread(target=_bg_data_search, daemon=True).start()
             return
 
-        elif cmd in ("/backend", "/python", "/swe", "/software"):
+        elif cmd in ("/backend", "/python", "/swe", "/software", "/developer", "/dev", "/sde"):
             location_arg = " ".join(args) if args else "Bengaluru"
-            query_arg = "Associate Software Engineer Python FastAPI Backend 0-2 years"
-            self.send_message(f"💻 *Searching Software & Python Backend Roles* in *'{location_arg}'* across 28 platforms...", target_chat_id=sender_id)
+            self.send_message(f"💻 *Searching All Software Engineer & Developer Roles* in *'{location_arg}'* across 34 platforms...\nScoring against your resume in real-time! ⏳", target_chat_id=sender_id)
             
             def _bg_swe_search():
                 from src.jobs.finder import JobFinder
@@ -478,7 +480,7 @@ class TelegramInteractiveBot:
                 from src.agents.match_agent import MatchAgent
 
                 finder = JobFinder.create_multi_source_finder()
-                discovered = finder.discover_jobs(query=query_arg, location=location_arg, time_range="3d")
+                discovered = finder.discover_software_engineer_jobs(location=location_arg, time_range="3d")
                 
                 jd_agent = JDAgent()
                 analyzed = jd_agent.analyze_all_pending_jobs(limit=100)
@@ -487,7 +489,7 @@ class TelegramInteractiveBot:
                 evals = match_agent.evaluate_all_pending_jobs()
 
                 qualified = [e for e in evals if e.overall_score >= 70]
-                self.send_message(f"✅ *Software / Backend Search Complete!*\n\nDiscovered: *{len(discovered)}* | Qualified (≥70%): *{len(qualified)}*", target_chat_id=sender_id)
+                self.send_message(f"✅ *Software Engineer & Developer Scout Complete!*\n\n🔍 Discovered: *{len(discovered)}* roles\n🎯 Qualified vs Resume (≥70%): *{len(qualified)}*", target_chat_id=sender_id)
                 self._handle_command("/top", sender_id, sender_name)
 
             threading.Thread(target=_bg_swe_search, daemon=True).start()

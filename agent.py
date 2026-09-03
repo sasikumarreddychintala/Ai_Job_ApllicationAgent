@@ -215,6 +215,7 @@ def main():
     parser.add_argument("--search-rag", type=str, metavar="QUERY", help="Perform semantic RAG retrieval on candidate knowledge base")
     parser.add_argument("--auto-apply", action="store_true", help="One-command full workflow: upload resume, discover matching jobs, and apply")
     parser.add_argument("--resume", type=str, help="Path to resume file (used with --auto-apply)")
+    parser.add_argument("--scout-swe", action="store_true", help="Search all Software Engineer and Developer jobs across all platforms and score against resume")
     args = parser.parse_args()
 
     if args.login:
@@ -318,6 +319,71 @@ def main():
         finder = JobFinder.create_multi_source_finder()
         jobs = finder.discover_jobs(query=args.search, location=args.location, time_range=args.time_range)
         logger.info(f"[bold green] Discovery finished! Found and stored {len(jobs)} unique jobs (Recency: {args.time_range}).[/bold green]")
+        return
+
+    if args.scout_swe:
+        from src.jobs.finder import JobFinder
+        from src.agents.jd_agent import JDAgent
+        from src.agents.match_agent import MatchAgent
+        from rich.table import Table
+        from rich.console import Console
+        from src.database.models import init_db
+
+        loc = args.location or "Bengaluru"
+        logger.info(f"[bold cyan]🚀 Launching Multi-Platform Search for Software Engineer & Developer Jobs in '{loc}'...[/bold cyan]")
+        finder = JobFinder.create_multi_source_finder()
+        discovered = finder.discover_software_engineer_jobs(location=loc, time_range=args.time_range)
+        logger.info(f"[bold cyan]🔍 Analyzing requirements for {len(discovered)} discovered roles...[/bold cyan]")
+
+        jd_agent = JDAgent()
+        analyzed = jd_agent.analyze_all_pending_jobs(limit=100)
+
+        logger.info("[bold cyan]🎯 Calculating Match Scores against Candidate Resume...[/bold cyan]")
+        match_agent = MatchAgent()
+        evals = match_agent.evaluate_all_pending_jobs()
+
+        # Display formatted table of scored Software Engineer & Developer jobs
+        conn = init_db()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT j.id, j.company, j.title, j.location, j.source, jm.overall_score, jm.decision, j.url
+                FROM jobs j
+                JOIN job_matches jm ON j.id = jm.job_id
+                ORDER BY jm.overall_score DESC, j.id DESC
+                LIMIT 30
+                """
+            )
+            rows = cursor.fetchall()
+
+            console = Console()
+            table = Table(title=f"💻 Software Engineer & Developer Jobs — Resume Match Scores ({loc})")
+            table.add_column("ID", justify="right", style="cyan")
+            table.add_column("Company", style="magenta")
+            table.add_column("Role / Title", style="green")
+            table.add_column("Location", style="white")
+            table.add_column("Platform", style="blue")
+            table.add_column("Resume Fit Score", justify="center", style="bold yellow")
+            table.add_column("Decision", justify="center")
+
+            for r in rows:
+                jid, comp, tit, jloc, src, score, dec, url = r
+                score_color = "bold green" if score >= 80 else "bold yellow" if score >= 70 else "white"
+                dec_color = "bold green" if dec in ("QUALIFIED", "VERY_HIGH", "HIGH", "APPLY") else "bold yellow" if dec == "REVIEW" else "red"
+                table.add_row(
+                    str(jid),
+                    comp or "Unknown",
+                    tit or "Software Engineer",
+                    jloc or loc,
+                    src or "Direct",
+                    f"[{score_color}]{score}%[/{score_color}]",
+                    f"[{dec_color}]{dec}[/{dec_color}]"
+                )
+            console.print(table)
+            logger.info(f"[bold green]✅ Evaluated {len(evals)} jobs against your resume. Top matches displayed above![/bold green]")
+        finally:
+            conn.close()
         return
 
     if args.apply_url:

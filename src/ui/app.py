@@ -1919,6 +1919,41 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "SUCCESS", "count": len(discovered)})
             return
 
+        if path == "/api/scout-software":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
+            payload = json.loads(body) if body else {}
+            location = payload.get("location", "Bengaluru")
+            time_range = payload.get("time_range", "3d")
+
+            def _swe_bg_worker():
+                try:
+                    from src.jobs.finder import JobFinder
+                    from src.agents.jd_agent import JDAgent
+                    from src.agents.match_agent import MatchAgent
+                    from src.agents.resume_agent import ResumeTailorAgent
+
+                    logger.info(f" Starting Software Engineer & Developer scout in '{location}' ({time_range})...")
+                    finder = JobFinder.create_multi_source_finder()
+                    discovered = finder.discover_software_engineer_jobs(location=location, time_range=time_range)
+                    logger.info(f" Discovered {len(discovered)} Software Engineer & Developer jobs.")
+
+                    jd_agent = JDAgent()
+                    analyzed = jd_agent.analyze_all_pending_jobs(limit=150)
+
+                    match_agent = MatchAgent()
+                    evals = match_agent.evaluate_all_pending_jobs()
+                    logger.info(f" Evaluated {len(evals)} jobs against candidate resume.")
+
+                    tailor_agent = ResumeTailorAgent()
+                    tailor_agent.tailor_all_pending_jobs()
+                except Exception as e:
+                    logger.error(f"Software scout background error: {e}")
+
+            threading.Thread(target=_swe_bg_worker, daemon=True).start()
+            self._send_json({"status": "STARTED"})
+            return
+
         if path == "/api/run-agent":
             def _apply_worker():
                 try:

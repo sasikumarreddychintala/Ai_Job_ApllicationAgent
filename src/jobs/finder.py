@@ -53,6 +53,14 @@ ROLE_SYNONYMS: dict = {
         "software engineer", "software developer", "backend engineer",
         "python developer", "backend developer", "python engineer",
         "api developer", "full stack developer", "fullstack engineer",
+        "associate software engineer", "junior software engineer",
+        "application developer", "web developer", "sde",
+    ],
+    "developer": [
+        "software developer", "developer", "backend developer",
+        "python developer", "full stack developer", "junior developer",
+        "associate developer", "api developer", "application developer",
+        "software engineer", "web developer",
     ],
     "data engineer": [
         "data engineer", "etl developer", "data pipeline engineer",
@@ -76,6 +84,11 @@ def expand_query_terms(query: str) -> list:
     Falls back to [query] if no synonym group matches.
     """
     q_lower = query.lower().strip()
+    if q_lower in ("swe", "sde", "software", "dev", "developer"):
+        if "dev" in q_lower:
+            return ROLE_SYNONYMS["developer"]
+        return ROLE_SYNONYMS["software engineer"]
+
     for canonical, synonyms in ROLE_SYNONYMS.items():
         if q_lower == canonical or q_lower in synonyms:
             return synonyms
@@ -253,6 +266,26 @@ class JobFinder:
             return discovered_new
         finally:
             conn.close()
+
+    def discover_software_engineer_jobs(self, location: str = "Bengaluru", time_range: str = "3d") -> List[NormalizedJob]:
+        """
+        Specialized discovery: Searches all Software Engineer & Developer jobs across all platforms,
+        covering Software Engineer, Software Developer, Python Backend Developer, and Full Stack Developer roles.
+        """
+        logger.info(f"[bold cyan]🔍 Scouting All Software Engineer & Developer Jobs in '{location}' across platforms...[/bold cyan]")
+        all_discovered = []
+        swe_queries = [
+            "Software Engineer",
+            "Software Developer",
+            "Python Backend Developer",
+            "Associate Software Engineer",
+        ]
+        for q in swe_queries:
+            jobs = self.discover_jobs(query=q, location=location, time_range=time_range)
+            all_discovered.extend(jobs)
+        logger.info(f"[bold green]✨ Completed Software Engineer & Developer scout: {len(all_discovered)} new jobs found.[/bold green]")
+        return all_discovered
+
 
 
 
