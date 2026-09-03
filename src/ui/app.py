@@ -842,15 +842,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <thead>
                     <tr>
                         <th style="width: 50px;">ID</th>
-                        <th style="width: 140px;">Source</th>
-                        <th>Company</th>
+                        <th style="width: 130px;">Platform</th>
+                        <th>Company &amp; Location</th>
                         <th>Job Title</th>
-                        <th style="width: 100px;">Match Fit</th>
+                        <th style="width: 140px;">Resume Fit Score</th>
                         <th style="width: 100px;">Decision</th>
-                        <th style="width: 130px;">Status</th>
-                        <th style="width: 130px;">Resume</th>
-                        <th style="width: 90px;">Outreach</th>
-                        <th style="width: 90px;">Link</th>
+                        <th style="width: 120px;">Status</th>
+                        <th style="width: 130px;">Tailored Resume</th>
+                        <th style="width: 150px;">Quick Actions</th>
+                        <th style="width: 70px;">Link</th>
                     </tr>
                 </thead>
                 <tbody id="app-rows">
@@ -890,22 +890,24 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         function renderCurrentTable() {
             const tbody = document.getElementById('app-rows');
             let displayJobs = [];
+            const searchFilter = (document.getElementById('history-search-input')?.value || '').toLowerCase().trim();
+            const currentSelectedRole = (document.getElementById('search-query')?.value || '').toLowerCase().trim();
 
             if (currentViewMode === 'live') {
-                displayJobs = allJobsList.filter(j => liveSessionJobIds.has(j.job_id));
-                if (displayJobs.length === 0 && !isSearching) {
-                    tbody.innerHTML = `
-                    <tr>
-                        <td colspan="10" style="text-align: center; padding: 40px 20px;">
-                            <div style="color: #94a3b8; font-size: 14px; margin-bottom: 8px;">🎯 <strong>Ready for Live Job Discovery</strong></div>
-                            <div style="color: #64748b; font-size: 12px; margin-bottom: 16px;">Click <strong>⚡ Search 0-2 Yrs Jobs</strong> above to stream newly discovered openings one by one.</div>
-                            <button class="btn btn-outline" style="font-size: 12px;" onclick="switchMainTab('history')">📁 Or Browse All Discovered Job History (${allJobsList.length} total)</button>
-                        </td>
-                    </tr>`;
-                    return;
+                if (liveSessionJobIds.size > 0) {
+                    displayJobs = allJobsList.filter(j => liveSessionJobIds.has(j.job_id));
+                } else {
+                    // Extract core terms from query (e.g. "software", "developer", "python", "ai", "engineer")
+                    const terms = currentSelectedRole.split(' ').filter(w => w.length > 2 && !['0-2', '1-2', 'years', 'yrs', 'fresher', 'most', 'popular'].includes(w));
+                    displayJobs = allJobsList.filter(j => {
+                        const text = `${j.title} ${j.company} ${j.source}`.toLowerCase();
+                        return terms.some(t => text.includes(t));
+                    });
+                    if (displayJobs.length === 0) {
+                        displayJobs = allJobsList.slice(0, 50);
+                    }
                 }
             } else if (currentViewMode === 'history') {
-                const searchFilter = (document.getElementById('history-search-input')?.value || '').toLowerCase().trim();
                 displayJobs = allJobsList.filter(j => {
                     if (!searchFilter) return true;
                     return (j.company || '').toLowerCase().includes(searchFilter) ||
@@ -913,10 +915,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                            (j.source || '').toLowerCase().includes(searchFilter);
                 });
             } else if (currentViewMode === 'qualified') {
-                displayJobs = allJobsList.filter(j => j.decision === 'HIGH' || j.decision === 'VERY_HIGH' || (j.match_score && j.match_score >= 70));
+                displayJobs = allJobsList.filter(j => j.decision === 'HIGH' || j.decision === 'VERY_HIGH' || j.decision === 'QUALIFIED' || (j.match_score && j.match_score >= 70));
             } else if (currentViewMode === 'resumes') {
                 displayJobs = allJobsList.filter(j => j.tailored_resume_path);
             }
+
+            // LinkedIn-style ranking: Always sort by highest resume match fit first
+            displayJobs.sort((a, b) => (b.match_score || 0) - (a.match_score || 0) || b.job_id - a.job_id);
 
             if (displayJobs.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 30px; color: #64748b;">No matching jobs in this view.</td></tr>`;
@@ -927,15 +932,18 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         }
 
         function renderJobRowHtml(a, isNewInSession = false) {
-            let scoreHtml = '<span style="color:#64748b;">-</span>';
+            let scoreHtml = '<span style="color:#64748b; font-size:11px;">⏳ Scoring...</span>';
             if (a.match_score !== null && a.match_score !== undefined) {
-                const sClass = a.match_score >= 80 ? 'score-high' : a.match_score >= 65 ? 'score-med' : 'score-low';
-                scoreHtml = `<span class="${sClass}">${a.match_score}/100</span>`;
+                const s = a.match_score;
+                const badgeColor = s >= 80 ? '#34d399' : s >= 70 ? '#38bdf8' : '#fbbf24';
+                const badgeBg = s >= 80 ? 'rgba(16,185,129,0.18)' : s >= 70 ? 'rgba(56,189,248,0.18)' : 'rgba(245,158,11,0.18)';
+                const grade = s >= 85 ? 'A+ Top' : s >= 75 ? 'Strong' : 'Good';
+                scoreHtml = `<span style="background:${badgeBg}; color:${badgeColor}; padding:3px 8px; border-radius:5px; font-weight:700; font-size:11px; white-space:nowrap;">🎯 ${s}% (${grade})</span>`;
             }
 
-            let resumeHtml = '<span style="color:#64748b;">-</span>';
+            let resumeHtml = `<button onclick="tailorJobNow(${a.job_id}, this)" class="btn btn-outline" style="font-size:11px; padding:3px 8px; color:#38bdf8; border-color:rgba(56,189,248,0.3); cursor:pointer;">⚡ Tailor PDF</button>`;
             if (a.tailored_resume_path) {
-                resumeHtml = `<a href="/api/view-resume?file=${encodeURIComponent(a.tailored_resume_path)}" target="_blank" class="btn btn-outline" style="font-size:11px; padding:3px 8px; color:#fbbf24; border-color:rgba(245,158,11,0.3); text-decoration:none;">📄 Tailored PDF ↗</a>`;
+                resumeHtml = `<a href="/api/view-resume?file=${encodeURIComponent(a.tailored_resume_path)}" target="_blank" class="btn btn-outline" style="font-size:11px; padding:3px 8px; color:#fbbf24; border-color:rgba(245,158,11,0.3); text-decoration:none; font-weight:600;">📄 Tailored PDF ↗</a>`;
             }
 
             let srcBadge = `<span style="font-size: 10px; text-transform: uppercase; color: var(--accent);">${a.source || 'Live'}</span>`;
@@ -959,21 +967,76 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             }
 
             const outreachBtn = `<button onclick="openOutreachModal(${a.job_id})" class="btn btn-outline" style="font-size:11px; padding:3px 8px; color:#a5b4fc; border-color:rgba(99,102,241,0.3);">✉️ Note</button>`;
+            const applyBtn = `<button onclick="applyJobNow(${a.job_id}, this)" class="btn btn-green" style="font-size:11px; padding:3px 8px;">🚀 Apply</button>`;
             const newPill = isNewInSession ? `<span style="background:rgba(56,189,248,0.25);color:#38bdf8;font-size:9px;padding:2px 5px;border-radius:4px;margin-left:6px;font-weight:700;">NEW</span>` : '';
 
             return `
             <tr class="${isNewInSession ? 'row-stream-new' : ''}">
                 <td style="color:#64748b; font-size:12px;">#${a.job_id}</td>
                 <td>${srcBadge}</td>
-                <td><strong>${a.company}</strong>${newPill}</td>
-                <td style="font-weight:500;">${a.title}</td>
+                <td>
+                    <strong style="color:var(--text);">${a.company}</strong>${newPill}
+                    <div style="font-size:11px; color:#64748b; margin-top:2px;">📍 ${a.location || 'Bengaluru'}</div>
+                </td>
+                <td style="font-weight:600;"><a href="${a.url || '#'}" target="_blank" style="color:#e2e8f0; text-decoration:none;">${a.title} ↗</a></td>
                 <td>${scoreHtml}</td>
-                <td><strong>${a.decision || '-'}</strong></td>
+                <td><strong style="color:#94a3b8; font-size:12px;">${a.decision || 'QUALIFIED'}</strong></td>
                 <td><span class="badge badge-${a.status}">${a.status}</span></td>
                 <td>${resumeHtml}</td>
-                <td>${outreachBtn}</td>
+                <td>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        ${applyBtn}
+                        ${outreachBtn}
+                    </div>
+                </td>
                 <td><a href="${a.url || '#'}" target="_blank" style="color:#38bdf8; text-decoration:none; font-size:12px; font-weight:600;">View ↗</a></td>
             </tr>`;
+        }
+
+        async function tailorJobNow(jobId, btn) {
+            btn.disabled = true;
+            btn.innerText = "⏳ Tailoring...";
+            try {
+                const res = await fetch('/api/tailor-job', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({job_id: jobId})
+                });
+                const d = await res.json();
+                if (d.status === 'SUCCESS' && d.tailored_resume_path) {
+                    showToast("Resume tailored successfully!");
+                    btn.outerHTML = `<a href="/api/view-resume?file=${encodeURIComponent(d.tailored_resume_path)}" target="_blank" class="btn btn-outline" style="font-size:11px; padding:3px 8px; color:#fbbf24; border-color:rgba(245,158,11,0.3); text-decoration:none; font-weight:600;">📄 Tailored PDF ↗</a>`;
+                    await loadData();
+                } else {
+                    btn.innerText = "❌ Failed";
+                    showToast(d.message || "Failed to tailor resume");
+                }
+            } catch(e) {
+                btn.innerText = "❌ Error";
+                showToast(e);
+            }
+        }
+
+        async function applyJobNow(jobId, btn) {
+            btn.disabled = true;
+            btn.innerText = "⏳ Launching...";
+            try {
+                const res = await fetch('/api/apply-job', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({job_id: jobId})
+                });
+                const d = await res.json();
+                if (d.status === 'STARTED') {
+                    showToast("Stealth application launched! Check live feed.");
+                    btn.innerText = "🚀 Applying...";
+                    setTimeout(() => { btn.innerText = "✅ In Progress"; }, 3000);
+                }
+            } catch(e) {
+                showToast("Apply error: " + e);
+                btn.innerText = "🚀 Apply";
+                btn.disabled = false;
+            }
         }
 
         async function loadProfile() {
@@ -1435,9 +1498,53 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
         if path in ("/api/jobs", "/api/applications"):
             conn = init_db()
             cursor = conn.cursor()
+            # Fast backfill for any existing unscored jobs
+            try:
+                cursor.execute(
+                    """
+                    SELECT j.id, j.title, j.company, j.location, j.raw_jd
+                    FROM jobs j
+                    LEFT JOIN job_matches jm ON j.id = jm.job_id
+                    WHERE jm.overall_score IS NULL
+                    LIMIT 200
+                    """
+                )
+                unscored = cursor.fetchall()
+                if unscored:
+                    from src.matching.scorer import calculate_match_score
+                    pm = ProfileManager()
+                    profile = pm.load_profile()
+                    for j_id, title, comp, loc, raw_jd in unscored:
+                        regex_skills = JDAgent._regex_preextract_skills(raw_jd or "")
+                        req = ParsedJDRequirements(
+                            title=title or "Software Engineer",
+                            company=comp or "Company",
+                            location=loc or "Bengaluru",
+                            required_skills=regex_skills,
+                            min_experience_years=1.0,
+                            keywords=regex_skills
+                        )
+                        eval_res = calculate_match_score(profile, req)
+                        new_status = "QUALIFIED" if eval_res.overall_score >= 70 else "SKIPPED"
+                        breakdown_json = json.dumps(eval_res.score_breakdown.model_dump())
+                        cursor.execute(
+                            """
+                            INSERT INTO job_matches (job_id, overall_score, decision, breakdown_json)
+                            VALUES (?, ?, ?, ?)
+                            """,
+                            (j_id, eval_res.overall_score, eval_res.decision, breakdown_json)
+                        )
+                        cursor.execute(
+                            "UPDATE applications SET status = ? WHERE job_id = ? AND status = 'DISCOVERED'",
+                            (new_status, j_id)
+                        )
+                    conn.commit()
+            except Exception as bfe:
+                logger.debug(f"Backfill unscored jobs notice: {bfe}")
+
             cursor.execute(
                 """
-                SELECT j.id, j.company, j.title, j.source, j.url, a.status, jm.overall_score, jm.decision, rv.file_path
+                SELECT j.id, j.company, j.title, j.source, j.url, a.status, jm.overall_score, jm.decision, rv.file_path, j.location
                 FROM jobs j
                 JOIN applications a ON j.id = a.job_id
                 LEFT JOIN job_matches jm ON j.id = jm.job_id
@@ -1457,7 +1564,8 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
                     "status": r[5],
                     "match_score": r[6],
                     "decision": r[7],
-                    "tailored_resume_path": r[8]
+                    "tailored_resume_path": r[8],
+                    "location": r[9] if len(r) > 9 else "Bengaluru"
                 })
             conn.close()
             self._send_json(history)
@@ -1997,6 +2105,60 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 logger.error(f"UI Resume upload failed: {e}")
                 self._send_json({"status": "ERROR", "error": str(e)})
+            return
+
+        if path == "/api/tailor-job":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
+            payload = json.loads(body) if body else {}
+            job_id = payload.get("job_id")
+            if not job_id:
+                params = urllib.parse.parse_qs(parsed.query)
+                job_id = int(params.get("job_id", [0])[0])
+
+            if not job_id:
+                self._send_json({"status": "ERROR", "message": "job_id is required"})
+                return
+
+            try:
+                from src.agents.resume_agent import ResumeTailorAgent
+                tailor_agent = ResumeTailorAgent()
+                pdf_path = tailor_agent.tailor_resume_for_job(job_id)
+                self._send_json({"status": "SUCCESS", "job_id": job_id, "tailored_resume_path": pdf_path})
+            except Exception as te:
+                logger.error(f"UI Tailor error for job #{job_id}: {te}")
+                self._send_json({"status": "ERROR", "message": str(te)})
+            return
+
+        if path == "/api/apply-job":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
+            payload = json.loads(body) if body else {}
+            job_id = payload.get("job_id")
+            if not job_id:
+                params = urllib.parse.parse_qs(parsed.query)
+                job_id = int(params.get("job_id", [0])[0])
+
+            if not job_id:
+                self._send_json({"status": "ERROR", "message": "job_id is required"})
+                return
+
+            def _apply_single():
+                try:
+                    conn = init_db()
+                    c = conn.cursor()
+                    c.execute("SELECT url FROM jobs WHERE id = ?", (job_id,))
+                    row = c.fetchone()
+                    conn.close()
+                    if row and row[0]:
+                        from src.automation.pilot import PilotRunner
+                        runner = PilotRunner()
+                        runner.run_pilot_on_url(row[0], is_live_submission=False)
+                except Exception as ae:
+                    logger.error(f"Single apply error for job #{job_id}: {ae}")
+
+            threading.Thread(target=_apply_single, daemon=True).start()
+            self._send_json({"status": "STARTED", "job_id": job_id})
             return
 
         if path == "/api/clear":
