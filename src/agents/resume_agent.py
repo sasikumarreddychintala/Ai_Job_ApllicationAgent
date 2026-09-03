@@ -91,8 +91,8 @@ class ResumeTailorAgent:
             if should_close:
                 conn.close()
 
-    def tailor_all_pending_jobs(self) -> List[Path]:
-        """Generates tailored resumes for all jobs currently in QUALIFIED application state."""
+    def tailor_all_pending_jobs(self, limit: int = 10) -> List[Path]:
+        """Generates tailored resumes for up to limit top jobs in QUALIFIED state (memory-optimized)."""
         conn = init_db(self.db_path)
         tailored_paths = []
         try:
@@ -101,15 +101,21 @@ class ResumeTailorAgent:
                 """
                 SELECT j.id FROM jobs j
                 JOIN applications a ON j.id = a.job_id
+                LEFT JOIN job_matches jm ON j.id = jm.job_id
                 WHERE a.status = 'QUALIFIED'
-                """
+                ORDER BY jm.overall_score DESC, j.id DESC
+                LIMIT ?
+                """,
+                (limit,)
             )
             pending_ids = [row[0] for row in cursor.fetchall()]
-            logger.info(f" Found {len(pending_ids)} qualified jobs ready for resume tailoring.")
+            logger.info(f" Found {len(pending_ids)} top qualified jobs ready for resume tailoring (limit={limit}).")
 
+            import gc
             for j_id in pending_ids:
                 p = self.tailor_resume_for_job(j_id, conn=conn)
                 tailored_paths.append(p)
+                gc.collect()
 
             return tailored_paths
         finally:

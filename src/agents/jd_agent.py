@@ -58,8 +58,8 @@ class JDAgent:
             if should_close:
                 conn.close()
 
-    def analyze_all_pending_jobs(self, limit: int = 150) -> List[ParsedJDRequirements]:
-        """Analyzes up to 150 pending jobs in DISCOVERED state using parallel Cloud AI workers."""
+    def analyze_all_pending_jobs(self, limit: int = 30) -> List[ParsedJDRequirements]:
+        """Analyzes up to 30 pending jobs in DISCOVERED state using parallel Cloud AI workers (memory-optimized)."""
         import concurrent.futures
         conn = init_db(self.db_path)
         analyzed_list = []
@@ -123,7 +123,7 @@ class JDAgent:
                     logger.debug(f"JD analysis notice for job {job_id}: {e}")
                     return None
 
-            max_workers = min(6, len(ids_to_analyze)) if ids_to_analyze else 1
+            max_workers = min(3, len(ids_to_analyze)) if ids_to_analyze else 1
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {}
                 for j_id in ids_to_analyze:
@@ -134,6 +134,8 @@ class JDAgent:
                     if result is not None:
                         analyzed_list.append(result)
 
+            import gc
+            gc.collect()
             logger.info(f" Parallel JD analysis complete: {len(analyzed_list)} jobs analyzed and ready for scoring.")
             return analyzed_list
         finally:

@@ -20,3 +20,5 @@ services:
         value: tech
       - key: HEADLESS
         value: "true"
+      - key: MALLOC_ARENA_MAX
+        value: "2"

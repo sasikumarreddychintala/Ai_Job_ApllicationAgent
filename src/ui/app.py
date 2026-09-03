@@ -1994,7 +1994,7 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
                     logger.info(f" Discovery complete: {len(discovered)} new jobs stored.")
 
                     jd_agent = JDAgent()
-                    analyzed = jd_agent.analyze_all_pending_jobs(limit=150)
+                    analyzed = jd_agent.analyze_all_pending_jobs(limit=30)
                     logger.info(f" Analyzed {len(analyzed)} pending JDs.")
 
                     match_agent = MatchAgent()
@@ -2002,8 +2002,10 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
                     logger.info(f" Match evaluation complete: {len(evals)} jobs evaluated.")
 
                     tailor_agent = ResumeTailorAgent()
-                    tailored = tailor_agent.tailor_all_pending_jobs()
+                    tailored = tailor_agent.tailor_all_pending_jobs(limit=10)
                     logger.info(f" Resume tailoring complete: {len(tailored)} tailored PDF resumes generated.")
+                    import gc
+                    gc.collect()
                 except Exception as e:
                     logger.error(f"Search & Score background error: {e}")
 
@@ -2047,14 +2049,16 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
                     logger.info(f" Discovered {len(discovered)} Software Engineer & Developer jobs.")
 
                     jd_agent = JDAgent()
-                    analyzed = jd_agent.analyze_all_pending_jobs(limit=150)
+                    analyzed = jd_agent.analyze_all_pending_jobs(limit=30)
 
                     match_agent = MatchAgent()
                     evals = match_agent.evaluate_all_pending_jobs()
                     logger.info(f" Evaluated {len(evals)} jobs against candidate resume.")
 
                     tailor_agent = ResumeTailorAgent()
-                    tailor_agent.tailor_all_pending_jobs()
+                    tailor_agent.tailor_all_pending_jobs(limit=10)
+                    import gc
+                    gc.collect()
                 except Exception as e:
                     logger.error(f"Software scout background error: {e}")
 
