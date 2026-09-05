@@ -1521,7 +1521,7 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
                             company=comp or "Company",
                             location=loc or "Bengaluru",
                             required_skills=regex_skills,
-                            min_experience_years=1.0,
+                            min_years_experience=1,
                             keywords=regex_skills
                         )
                         eval_res = calculate_match_score(profile, req)

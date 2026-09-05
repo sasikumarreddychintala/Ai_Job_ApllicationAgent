@@ -187,16 +187,33 @@ class JDAgent:
     ]
 
     @classmethod
+    def _strip_html(cls, text: str) -> str:
+        """Strip HTML tags and decode common HTML entities from raw JD text."""
+        import html
+        # Decode HTML entities first (e.g. &#43; → +, &amp; → &, &lt; → <)
+        text = html.unescape(text)
+        # Replace block-level tags with spaces so words don't merge
+        text = re.sub(r'<(br|p|li|div|tr|td|th|h[1-6]|ul|ol)[^>]*>', ' ', text, flags=re.IGNORECASE)
+        # Strip all remaining HTML tags
+        text = re.sub(r'<[^>]+>', ' ', text)
+        # Collapse whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+
+    @classmethod
     def _regex_preextract_skills(cls, jd_text: str) -> list:
         """
         Fast regex pass over raw JD text to extract known tech skills.
         Runs BEFORE LLM call and results are merged with LLM output.
         Catches skills that LLMs sometimes miss in long or complex JDs.
+        HTML is stripped first so tags like <p>Python</p> are correctly matched.
         """
+        # Strip HTML so skills inside tags are visible to word-boundary regex
+        clean_text = cls._strip_html(jd_text) if jd_text else ""
         found = []
         for skill in cls._REGEX_TECH_SKILLS:
             pattern = r'\b' + skill + r'\b'
-            if re.search(pattern, jd_text, re.IGNORECASE):
+            if re.search(pattern, clean_text, re.IGNORECASE):
                 # Use the canonical casing from _REGEX_TECH_SKILLS list
                 canonical = re.sub(r'\\', '', skill)  # remove regex escape chars
                 found.append(canonical)
@@ -215,13 +232,14 @@ class JDAgent:
         Step 3: Merge LLM output + regex skills → never miss a skill
         Step 4: Full deterministic fallback if AI completely fails
         """
-        # Step 1: Regex pre-extraction (always runs, zero token cost)
-        regex_skills = self._regex_preextract_skills(raw_jd)
+        # Step 1: Strip HTML + Regex pre-extraction (always runs, zero token cost)
+        clean_jd = self._strip_html(raw_jd) if raw_jd else ""
+        regex_skills = self._regex_preextract_skills(clean_jd)
         logger.info(f" Regex pre-extractor found {len(regex_skills)} skills: {regex_skills[:8]}{'...' if len(regex_skills) > 8 else ''}")
 
         # Step 2 & 3: Try Cloud AI / LLM extraction + merge with regex skills
         try:
-            prompt = render_jd_prompt(raw_jd)
+            prompt = render_jd_prompt(clean_jd)
             parsed = self.ollama.generate_json(prompt, ParsedJDRequirements)
             if parsed and parsed.required_skills:
                 if not parsed.title:

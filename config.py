@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     ENV: str = "development"
     DRY_RUN: bool = True
     DAILY_APPLICATION_LIMIT: int = 50
-    MIN_MATCH_SCORE: int = 70
+    MIN_MATCH_SCORE: int = 60
     CUSTOM_EXPERIENCE_ALIGNMENT: bool = True
     RESUME_THEME: str = "tech"
     LOG_LEVEL: str = "INFO"
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-2.0-flash"
 
     # Playwright Browser Configuration
     HEADLESS: bool = False

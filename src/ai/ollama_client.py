@@ -206,13 +206,15 @@ class OllamaClient:
     ) -> T:
         """Calls Google Gemini Cloud API with official stable model fallback."""
         clean_key = api_key.strip().strip("'\"")
-        configured_model = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash").strip().strip("'\"")
+        configured_model = getattr(settings, "GEMINI_MODEL", "gemini-2.0-flash").strip().strip("'\"")
         # Official Google Gemini production models on AI Studio (verified active, 2026)
         candidate_models = [
             configured_model,
-            "gemini-1.5-flash",
             "gemini-2.0-flash",
             "gemini-2.0-flash-lite",
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b",
+            "gemini-2.0-flash-exp",
             "gemini-1.5-pro",
         ]
         models_to_try = []
