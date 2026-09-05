@@ -52,4 +52,25 @@ def check_hard_constraints(
                 logger.info(f"[SKIP] {reason}")
                 return True, reason
 
+    # Location & Work Authorization Constraint
+    cand_loc = (candidate.contact_info.location or "").lower()
+    jd_loc = (requirements.location or "").lower()
+    jd_title = (getattr(requirements, "title", "") or "").lower()
+    is_india_cand = "india" in cand_loc or "bengaluru" in cand_loc or "bangalore" in cand_loc or "india" in work_auth
+    is_remote = any(w in jd_loc or w in jd_title for w in ["remote", "worldwide", "anywhere", "work from home", "wfh"])
+
+    if is_india_cand and not is_remote and jd_loc:
+        import re
+        overseas_markers = [
+            "uk", "london", "united kingdom", "usa", "united states", "san francisco", "new york",
+            "seattle", "austin", "chicago", "pittsburgh", "canada", "toronto", "vancouver",
+            "germany", "berlin", "munich", "netherlands", "amsterdam", "france", "paris",
+            "australia", "sydney", "melbourne", "singapore", "poland", "sweden", "ireland", "dublin"
+        ]
+        for om in overseas_markers:
+            if re.search(r'\b' + re.escape(om) + r'\b', jd_loc):
+                reason = f"Location constraint failed: Job is on-site in '{requirements.location}'. Candidate is based in India with India work authorization."
+                logger.info(f"[SKIP] {reason}")
+                return True, reason
+
     return False, None

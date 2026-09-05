@@ -1498,14 +1498,13 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
         if path in ("/api/jobs", "/api/applications"):
             conn = init_db()
             cursor = conn.cursor()
-            # Fast backfill for any existing unscored jobs
+            # Fast backfill for any existing unscored jobs (strictly unscored only)
             try:
                 cursor.execute(
                     """
                     SELECT j.id, j.title, j.company, j.location, j.raw_jd
                     FROM jobs j
-                    LEFT JOIN job_matches jm ON j.id = jm.job_id
-                    WHERE jm.overall_score IS NULL
+                    WHERE j.id NOT IN (SELECT job_id FROM job_matches)
                     LIMIT 200
                     """
                 )
@@ -1525,11 +1524,11 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
                             keywords=regex_skills
                         )
                         eval_res = calculate_match_score(profile, req)
-                        new_status = "QUALIFIED" if eval_res.overall_score >= 70 else "SKIPPED"
+                        new_status = "QUALIFIED" if eval_res.overall_score >= 60 else "SKIPPED"
                         breakdown_json = json.dumps(eval_res.score_breakdown.model_dump())
                         cursor.execute(
                             """
-                            INSERT INTO job_matches (job_id, overall_score, decision, breakdown_json)
+                            INSERT OR REPLACE INTO job_matches (job_id, overall_score, decision, breakdown_json)
                             VALUES (?, ?, ?, ?)
                             """,
                             (j_id, eval_res.overall_score, eval_res.decision, breakdown_json)
@@ -1544,12 +1543,16 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
 
             cursor.execute(
                 """
-                SELECT j.id, j.company, j.title, j.source, j.url, a.status, jm.overall_score, jm.decision, rv.file_path, j.location
+                SELECT j.id, j.company, j.title, j.source, j.url, a.status,
+                       COALESCE(MAX(jm.overall_score), 0) AS overall_score,
+                       COALESCE(MAX(jm.decision), 'SKIP') AS decision,
+                       rv.file_path, j.location
                 FROM jobs j
                 JOIN applications a ON j.id = a.job_id
                 LEFT JOIN job_matches jm ON j.id = jm.job_id
                 LEFT JOIN resume_versions rv ON a.resume_version_id = rv.id
-                ORDER BY j.id DESC
+                GROUP BY j.id
+                ORDER BY overall_score DESC, j.id DESC
                 """
             )
             rows = cursor.fetchall()

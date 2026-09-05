@@ -230,7 +230,6 @@ def calculate_match_score(
 
     # 3. Required Skill Matching (0–30 pts)
     # FIX: Use exact match OR semantic cluster match ONLY.
-    # Old substring match caused java→javascript false positives.
     req_skills = [s for s in requirements.required_skills if s.strip()]
     matched_skills = []
     missing_skills = []
@@ -249,9 +248,17 @@ def calculate_match_score(
         match_ratio = len(matched_skills) / len(req_skills)
         required_skills_score = round(match_ratio * 30)
     else:
-        required_skills_score = 30
+        # Fallback when JD has no explicit skills extracted
+        # Score conservatively based on whether title matches candidate's core stack
+        title_lower_check = (requirements.title or "").lower()
+        if any(w in title_lower_check for w in ["python", "fastapi", "django", "ai", "machine learning", "llm", "backend"]):
+            required_skills_score = 15
+        elif any(w in title_lower_check for w in ["software engineer", "software developer", "sde", "developer", "engineer", "full stack", "fullstack"]):
+            required_skills_score = 10
+        else:
+            required_skills_score = 0
 
-    # 4. Preferred Skills Bonus (0–5 pts) [NEW]
+    # 4. Preferred Skills Bonus (0–5 pts)
     pref_skills = [s for s in getattr(requirements, "preferred_skills", []) if s.strip()]
     if pref_skills:
         pref_matched = [
@@ -261,7 +268,7 @@ def calculate_match_score(
         ]
         preferred_skills_score = round((len(pref_matched) / len(pref_skills)) * 5)
     else:
-        preferred_skills_score = 3  # neutral when JD has no preferred skills listed
+        preferred_skills_score = 0
 
     # 5. Experience Depth Fit (0–20 pts) — month-aware datetime calculation
     total_exp_years = _compute_experience_years(candidate)
@@ -275,8 +282,6 @@ def calculate_match_score(
     if is_early_career or min_years <= 2.0:
         experience_fit_score = 20
     else:
-        # Linear interpolation: smooth score based on how close candidate is to required years
-        # e.g. 2yrs candidate vs 3yr req → round(2/3 * 20) = 13 (was 5 before)
         exp_ratio = min(1.0, total_exp_years / max(min_years, 0.5))
         experience_fit_score = round(exp_ratio * 20)
 
@@ -284,15 +289,15 @@ def calculate_match_score(
     jd_keywords_set: Set[str] = {normalize_skill(k) for k in requirements.keywords if k.strip()}
     jd_keywords_set.update(normalize_skill(s) for s in req_skills)
 
-    if candidate.projects:
+    if candidate.projects and jd_keywords_set:
         project_rel_score = 0
         for proj in candidate.projects:
             proj_tech = {normalize_skill(t) for t in proj.technologies}
             overlap = len(proj_tech & jd_keywords_set)
             project_rel_score += min(5, overlap * 2)
-        project_relevance_score = min(15, project_rel_score if project_rel_score > 0 else 8)
+        project_relevance_score = min(15, project_rel_score)
     else:
-        project_relevance_score = 3
+        project_relevance_score = 0
 
     # 7. Technical Semantic Similarity (0–15 pts)
     if jd_keywords_set:
@@ -304,7 +309,7 @@ def calculate_match_score(
         tech_ratio = len(tech_matched) / len(jd_keywords_set)
         technical_similarity_score = round(tech_ratio * 15)
     else:
-        technical_similarity_score = 10
+        technical_similarity_score = 0
 
     # 8. Education Fit (0–5 pts)
     education_score = 5 if candidate.education else 3
@@ -315,17 +320,44 @@ def calculate_match_score(
     location_score = 5 if _location_matches(cand_loc, jd_loc) else 2
 
     # 10. Other Factors: Title Relevance + Certifications (0–5 pts)
-    # Title relevance gate: reward on-target roles, penalize off-category
     TARGET_ROLE_KEYWORDS = {
         "ai", "ml", "machine learning", "llm", "nlp", "data scientist", "applied",
         "python", "backend", "software", "data engineer", "full stack", "fullstack",
         "genai", "generative", "rag", "research", "developer", "engineer"
     }
-    jd_title_words = set((requirements.title or "").lower().split())
-    title_relevance = any(kw in (requirements.title or "").lower() for kw in TARGET_ROLE_KEYWORDS)
+    title_relevance = any(kw in title_lower for kw in TARGET_ROLE_KEYWORDS)
     title_bonus = 3 if title_relevance else 0
     cert_bonus = 2 if candidate.certifications else 1
     other_factors_score = min(5, title_bonus + cert_bonus)
+
+    # 11. Technology & Domain Penalties:
+    # If the job title explicitly requires a tech stack the candidate doesn't have (e.g. C++, C#, Ruby, PHP, Swift, iOS)
+    TECH_TITLE_KEYWORDS = {
+        "c++": ["c++", "cpp"],
+        "c#": ["c#", ".net", "dotnet"],
+        "golang": ["golang", "go developer", "go engineer"],
+        "rust": ["rust developer", "rust engineer"],
+        "ruby": ["ruby", "rails"],
+        "php": ["php", "laravel", "symfony"],
+        "swift": ["swift", "ios developer", "ios engineer"],
+        "kotlin": ["kotlin", "android developer", "android engineer"],
+        "flutter": ["flutter"],
+    }
+    title_tech_penalty = 0
+    for tech_name, patterns in TECH_TITLE_KEYWORDS.items():
+        if any(p in title_lower for p in patterns):
+            if not any(are_skills_semantically_related(tech_name, cs) or tech_name in cs for cs in candidate_skills_set):
+                title_tech_penalty = 30
+                missing_skills.append(f"Title requires {tech_name.upper()} (missing from profile)")
+                break
+
+    # Domain mismatch penalty (Infrastructure, Security, Hardware, QA, Network)
+    OFF_TARGET_DOMAINS = [
+        "security engineer", "infrastructure engineer", "quality engineer", "qa engineer",
+        "hardware engineer", "network engineer", "devops engineer", "penetration tester",
+        "soc analyst", "cyber security"
+    ]
+    domain_penalty = 25 if any(dom in title_lower for dom in OFF_TARGET_DOMAINS) else 0
 
     # Total Score
     total_score = (
@@ -337,6 +369,8 @@ def calculate_match_score(
         + education_score
         + location_score
         + other_factors_score
+        - title_tech_penalty
+        - domain_penalty
     )
     total_score = min(100, max(0, total_score))
 
