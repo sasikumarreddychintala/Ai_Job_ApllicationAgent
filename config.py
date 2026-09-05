@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     CUSTOM_EXPERIENCE_ALIGNMENT: bool = True
     RESUME_THEME: str = "tech"
     LOG_LEVEL: str = "INFO"
+    AUTO_SCOUT_ENABLED: bool = True
+    AUTO_SCOUT_SCHEDULE: str = "08:00"
 
     # Database Configuration (sqlite or postgres)
     DATABASE_TYPE: str = "sqlite"

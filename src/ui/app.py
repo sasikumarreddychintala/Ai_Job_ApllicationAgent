@@ -2168,6 +2168,34 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "STARTED", "job_id": job_id})
             return
 
+        if path == "/api/db-status":
+            db_type = getattr(settings, "DATABASE_TYPE", "sqlite")
+            db_url = getattr(settings, "DATABASE_URL", "") or ""
+            is_postgres = db_type == "postgres" and bool(db_url.strip())
+            status_data = {
+                "engine": "PostgreSQL (Cloud/Supabase)" if is_postgres else "SQLite (Local/WAL)",
+                "persistence": "Permanent Cloud Storage" if is_postgres else "Local Disk",
+                "connected": False,
+                "job_count": 0,
+                "match_count": 0,
+                "qualified_count": 0
+            }
+            try:
+                conn = init_db()
+                c = conn.cursor()
+                c.execute("SELECT COUNT(*) FROM jobs")
+                status_data["job_count"] = c.fetchone()[0]
+                c.execute("SELECT COUNT(*) FROM job_matches")
+                status_data["match_count"] = c.fetchone()[0]
+                c.execute("SELECT COUNT(*) FROM applications WHERE status = 'QUALIFIED'")
+                status_data["qualified_count"] = c.fetchone()[0]
+                conn.close()
+                status_data["connected"] = True
+            except Exception as e:
+                status_data["error"] = str(e)
+            self._send_json(status_data)
+            return
+
         if path == "/api/clear":
             conn = init_db()
             with conn:
@@ -2220,6 +2248,16 @@ def run_dashboard_server(host: str = "0.0.0.0", port: int = 8000):
             logger.info("[bold cyan]📱 2-Way Interactive Telegram Assistant is active & listening to your phone![/bold cyan]")
     except Exception as e:
         logger.debug(f"Telegram Bot start notice: {e}")
+
+    # Start 24/7 Autonomous Job Scheduler Daemon
+    try:
+        from src.automation.scheduler import scheduler
+        if getattr(settings, "AUTO_SCOUT_ENABLED", True):
+            scheduler.schedule_time = getattr(settings, "AUTO_SCOUT_SCHEDULE", "08:00")
+            scheduler.start()
+            logger.info(f"[bold cyan]⏰ 24/7 Autonomous Job Scheduler active! Runs daily at {scheduler.schedule_time}[/bold cyan]")
+    except Exception as se:
+        logger.debug(f"Scheduler auto-start notice: {se}")
 
     # Auto-seed / Auto-discover on startup if database is fresh
     def _startup_scout():

@@ -299,7 +299,12 @@ def calculate_match_score(
     else:
         project_relevance_score = 0
 
-    # 7. Technical Semantic Similarity (0–15 pts)
+    # 7. Technical Semantic Similarity (0–15 pts) — Hybrid AI Vector & Cluster Matching
+    from src.matching.semantic import SemanticMatcher
+    cand_summary_text = f"{candidate.summary or ''} {' '.join(candidate.skills[:20])}"
+    jd_desc_text = f"{requirements.title or ''} {' '.join(req_skills)} {' '.join(requirements.keywords or [])}"
+    vector_sim = SemanticMatcher.compute_semantic_similarity(cand_summary_text, jd_desc_text)
+
     if jd_keywords_set:
         tech_matched = [
             k for k in jd_keywords_set
@@ -307,7 +312,10 @@ def calculate_match_score(
             or any(are_skills_semantically_related(k, cs) for cs in candidate_skills_set)
         ]
         tech_ratio = len(tech_matched) / len(jd_keywords_set)
-        technical_similarity_score = round(tech_ratio * 15)
+        blended_ratio = (tech_ratio * 0.65) + (vector_sim * 0.35)
+        technical_similarity_score = round(blended_ratio * 15)
+    elif vector_sim > 0.35:
+        technical_similarity_score = round(vector_sim * 10)
     else:
         technical_similarity_score = 0
 

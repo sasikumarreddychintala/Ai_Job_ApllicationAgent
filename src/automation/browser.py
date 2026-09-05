@@ -74,16 +74,52 @@ class BrowserManager:
             )
             self._page = self._context.new_page()
 
-        # Stealth Init Scripts: Mask automation fingerprints from Cloudflare / DataDome
+        # Comprehensive Stealth Init Scripts: Mask automation fingerprints from Cloudflare / DataDome / Kasada
         self._page.add_init_script("""
+            // 1. Mask navigator.webdriver
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            window.chrome = { runtime: {} };
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+
+            // 2. Mock chrome runtime object
+            window.chrome = {
+                runtime: {},
+                app: { isInstalled: false },
+                csi: function() {},
+                loadTimes: function() {}
+            };
+
+            // 3. Mock languages and plugins
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'en-IN'] });
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [
+                    { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                    { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+                    { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
+                ]
+            });
+
+            // 4. WebGL Vendor / Renderer Spoofing (masks headless SwiftShader / llvmpipe)
+            try {
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                    if (parameter === 37445) return 'Google Inc. (NVIDIA)';
+                    if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0)';
+                    return getParameter.apply(this, [parameter]);
+                };
+            } catch (e) {}
+
+            // 5. Mock permissions query
+            try {
+                const origQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        origQuery(parameters)
+                );
+            } catch (e) {}
         """)
 
         self._page.set_default_timeout(settings.BROWSER_TIMEOUT)
-        logger.info(" Stealth browser context initialized successfully.")
+        logger.info(" Advanced Stealth browser context initialized successfully.")
         return self._page
 
     def take_screenshot(self, name: str = "failure_screenshot.png") -> Path:

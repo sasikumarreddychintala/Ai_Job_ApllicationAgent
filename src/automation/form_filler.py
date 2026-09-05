@@ -25,11 +25,13 @@ class FormFiller:
         ]
 
         # Try Playwright get_by_label
+        import random
         try:
             lbl_locator = self.page.get_by_label(re.compile(field_name, re.IGNORECASE))
             if lbl_locator.count() > 0 and lbl_locator.first.is_visible():
                 try:
-                    lbl_locator.first.press_sequentially(value, delay=10)
+                    # Natural human typing delay with micro-jitter
+                    lbl_locator.first.press_sequentially(value, delay=random.randint(20, 50))
                 except Exception:
                     lbl_locator.first.fill(value)
                 logger.info(f" Filled field '{field_name}' via label.")
@@ -43,7 +45,7 @@ class FormFiller:
                 loc = self.page.locator(sel)
                 if loc.count() > 0 and loc.first.is_visible():
                     try:
-                        loc.first.press_sequentially(value, delay=10)
+                        loc.first.press_sequentially(value, delay=random.randint(20, 50))
                     except Exception:
                         loc.first.fill(value)
                     logger.info(f" Filled field '{field_name}' via selector '{sel}'.")
