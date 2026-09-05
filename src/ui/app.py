@@ -669,6 +669,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             <button class="btn btn-outline" onclick="syncTrackerNow()">📊 Sync Tracker</button>
             <button class="btn btn-outline" onclick="openNotifModal()">⚙️ Settings</button>
             <button class="btn btn-green" onclick="runFullPipeline()">🚀 Auto-Apply</button>
+            <button class="btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #f87171;" onclick="clearAllData()">🗑️ Clear Data</button>
         </div>
     </div>
 
@@ -1373,13 +1374,28 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             else alert("Sync notice: " + (data.error || 'Check settings'));
         }
 
-        async function clearData() {
-            if (confirm("Clear all job history from the database?")) {
-                await fetch('/api/clear', {method: 'POST'});
-                liveSessionJobIds.clear();
-                await loadData();
+        async function clearAllData() {
+            const confirmed = confirm("⚠️ WIPE ALL DATA & RESUMES?\n\nThis will permanently delete:\n• All searched & discovered jobs\n• All match evaluations & application statuses\n• All generated tailored PDF resumes from disk\n\nYou will start with a fresh, 100% clean slate.");
+            if (!confirmed) return;
+
+            showToast("Wiping all jobs and tailored resumes...");
+            try {
+                const res = await fetch('/api/clear', { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'CLEARED') {
+                    liveSessionJobIds.clear();
+                    showToast(`✅ ${data.message || 'Wiped successfully!'}`);
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1200);
+                } else {
+                    alert("Clear failed: " + (data.error || 'Unknown error'));
+                }
+            } catch(e) {
+                alert("Network error: " + e.message);
             }
         }
+        const clearData = clearAllData;
 
         async function runFullPipeline() {
             const status = document.getElementById('search-status');
@@ -1477,6 +1493,11 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             self.wfile.write(b'{"status":"ok","uptime":"live","service":"sasi_job_application_agent"}')
+            return
+
+        if path == "/api/clear":
+            result = self._perform_full_data_wipe()
+            self._send_json(result)
             return
 
         if path == "/" or path == "/index.html":
@@ -2197,6 +2218,29 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/clear":
+            result = self._perform_full_data_wipe()
+            self._send_json(result)
+            return
+
+        self.send_response(404)
+        self.end_headers()
+
+    def _perform_full_data_wipe(self):
+        """Wipes all jobs, match evaluations, application history, and tailored PDF resume files."""
+        deleted_resumes_count = 0
+        try:
+            # 1. Purge physical tailored PDF resumes on disk
+            tailored_dir = settings.TAILORED_RESUMES_DIR
+            if tailored_dir.exists():
+                for f in tailored_dir.glob("*"):
+                    try:
+                        if f.is_file():
+                            f.unlink()
+                            deleted_resumes_count += 1
+                    except Exception:
+                        pass
+
+            # 2. Purge database records
             conn = init_db()
             with conn:
                 conn.execute("DELETE FROM application_events")
@@ -2205,12 +2249,20 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
                 conn.execute("DELETE FROM resume_versions")
                 conn.execute("DELETE FROM jobs")
                 conn.execute("DELETE FROM agent_runs")
+                try:
+                    conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('jobs', 'job_matches', 'applications', 'resume_versions', 'application_events', 'agent_runs')")
+                except Exception:
+                    pass
             conn.close()
-            self._send_json({"status": "CLEARED"})
-            return
-
-        self.send_response(404)
-        self.end_headers()
+            logger.info(f"[CLEAN SLATE] Wiped all database records and {deleted_resumes_count} tailored PDF files.")
+            return {
+                "status": "CLEARED",
+                "message": f"Wiped all jobs, evaluations, and {deleted_resumes_count} tailored PDF resumes!",
+                "deleted_resumes": deleted_resumes_count
+            }
+        except Exception as e:
+            logger.error(f"Failed to wipe data: {e}")
+            return {"status": "ERROR", "error": str(e)}
 
     def _send_json(self, data):
         try:
