@@ -2234,7 +2234,7 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             if tailored_dir.exists():
                 for f in tailored_dir.glob("*"):
                     try:
-                        if f.is_file():
+                        if f.is_file() and f.name != ".gitkeep":
                             f.unlink()
                             deleted_resumes_count += 1
                     except Exception:
