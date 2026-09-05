@@ -44,6 +44,18 @@ class ResumeTailorAgent:
             cursor.execute("SELECT title, company, analyzed_requirements FROM jobs WHERE id = ?", (job_id,))
             row = cursor.fetchone()
             if not row or not row[2]:
+                # Auto-analyze on the fly if requirements were not parsed yet
+                logger.info(f" Job ID {job_id} missing analyzed requirements. Auto-analyzing now...")
+                try:
+                    from src.agents.jd_agent import JDAgent
+                    jd_agent = JDAgent(db_path=self.db_path)
+                    jd_agent.analyze_job(job_id, conn=conn)
+                    cursor.execute("SELECT title, company, analyzed_requirements FROM jobs WHERE id = ?", (job_id,))
+                    row = cursor.fetchone()
+                except Exception as jdae:
+                    logger.warning(f"On-the-fly JD analysis failed for Job ID {job_id}: {jdae}")
+
+            if not row or not row[2]:
                 raise ValueError(f"Job ID {job_id} not found or missing analyzed requirements.")
 
             title, company, req_json_str = row
@@ -113,8 +125,11 @@ class ResumeTailorAgent:
 
             import gc
             for j_id in pending_ids:
-                p = self.tailor_resume_for_job(j_id, conn=conn)
-                tailored_paths.append(p)
+                try:
+                    p = self.tailor_resume_for_job(j_id, conn=conn)
+                    tailored_paths.append(p)
+                except Exception as je:
+                    logger.warning(f"Resume tailoring skipped for Job ID {j_id}: {je}")
                 gc.collect()
 
             return tailored_paths
