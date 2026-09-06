@@ -1539,48 +1539,6 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
         if path in ("/api/jobs", "/api/applications"):
             conn = init_db()
             cursor = conn.cursor()
-            # Fast backfill for any existing unscored jobs (strictly unscored only)
-            try:
-                cursor.execute(
-                    """
-                    SELECT j.id, j.title, j.company, j.location, j.raw_jd
-                    FROM jobs j
-                    WHERE j.id NOT IN (SELECT job_id FROM job_matches)
-                    LIMIT 200
-                    """
-                )
-                unscored = cursor.fetchall()
-                if unscored:
-                    from src.matching.scorer import calculate_match_score
-                    pm = ProfileManager()
-                    profile = pm.load_profile()
-                    for j_id, title, comp, loc, raw_jd in unscored:
-                        regex_skills = JDAgent._regex_preextract_skills(raw_jd or "")
-                        req = ParsedJDRequirements(
-                            title=title or "Software Engineer",
-                            company=comp or "Company",
-                            location=loc or "Bengaluru",
-                            required_skills=regex_skills,
-                            min_years_experience=1,
-                            keywords=regex_skills
-                        )
-                        eval_res = calculate_match_score(profile, req)
-                        new_status = "QUALIFIED" if eval_res.overall_score >= 60 else "SKIPPED"
-                        breakdown_json = json.dumps(eval_res.score_breakdown.model_dump())
-                        cursor.execute(
-                            """
-                            INSERT OR REPLACE INTO job_matches (job_id, overall_score, decision, breakdown_json)
-                            VALUES (?, ?, ?, ?)
-                            """,
-                            (j_id, eval_res.overall_score, eval_res.decision, breakdown_json)
-                        )
-                        cursor.execute(
-                            "UPDATE applications SET status = ? WHERE job_id = ? AND status = 'DISCOVERED'",
-                            (new_status, j_id)
-                        )
-                    conn.commit()
-            except Exception as bfe:
-                logger.debug(f"Backfill unscored jobs notice: {bfe}")
 
             cursor.execute(
                 """
