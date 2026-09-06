@@ -72,3 +72,34 @@ def test_profile_manager_save_and_load(tmp_path):
     assert loaded is not None
     assert loaded.contact_info.full_name == "Bob Miller"
     assert "Docker" in loaded.skills
+
+
+def test_pure_python_resume_parser():
+    from src.resume.parser import PurePythonResumeParser, extract_resume_text
+    sample_pdf = Path("data/sample_resume.pdf")
+    if sample_pdf.exists():
+        raw_text = extract_resume_text(sample_pdf)
+        profile = PurePythonResumeParser.parse(raw_text)
+        assert profile.contact_info.full_name == "Hemanth Kumar"
+        assert profile.contact_info.email == "hemanth@example.com"
+        assert "+1-555-0199" in profile.contact_info.phone
+        assert "Seattle" in profile.contact_info.location
+        assert profile.contact_info.linkedin is not None
+        assert profile.contact_info.github is not None
+        assert "Python" in profile.skills
+        assert "FastAPI" in profile.skills
+        assert len(profile.experience) >= 1
+        assert "Tech Corp" in profile.experience[0].company
+        assert len(profile.education) >= 1
+        assert "University of Washington" in profile.education[0].institution
+
+
+def test_resume_parser_class():
+    from src.resume.parser import ResumeParser
+    sample_pdf = Path("data/sample_resume.pdf")
+    if sample_pdf.exists():
+        parser = ResumeParser()
+        profile = parser.parse(sample_pdf)
+        assert profile.contact_info.full_name is not None
+        assert len(profile.skills) > 0
+
