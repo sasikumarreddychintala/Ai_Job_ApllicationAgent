@@ -121,6 +121,17 @@ class OllamaClient:
 
         raise RuntimeError(f"All AI providers (Groq, Gemini, Ollama) exhausted: {last_error}")
 
+    def _unwrap_schema_dict(self, parsed: Any, schema_cls: Type[T]) -> Dict[str, Any]:
+        """Unwraps any top-level key an LLM may wrap the JSON in (e.g. {'profile': {...}})."""
+        if not isinstance(parsed, dict):
+            return parsed
+        schema_fields = set(getattr(schema_cls, "model_fields", {}).keys())
+        if schema_fields and not (schema_fields & set(parsed.keys())):
+            for val in parsed.values():
+                if isinstance(val, dict) and (schema_fields & set(val.keys())):
+                    return val
+        return parsed
+
     def _generate_groq(
         self,
         prompt: str,
@@ -132,17 +143,9 @@ class OllamaClient:
         clean_key = api_key.strip().strip("'\"")
         configured_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile").strip().strip("'\"")
 
-        # Only models confirmed to support response_format=json_object on Groq (2026)
-        # mixtral-8x7b-32768 is DEPRECATED — removed to avoid 400s
-        json_object_models = {
-            "llama-3.3-70b-versatile",
-            "llama3-70b-8192",
-        }
-
-        # Active model fallback chain (verified 2026 — deprecated models removed)
+        # Active models in Groq (2026). Old decommissioned models removed.
         candidate_models = []
-        for m in [configured_model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant",
-                  "gemma2-9b-it", "llama3-8b-8192"]:
+        for m in [configured_model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemma2-9b-it"]:
             if m and m not in candidate_models:
                 candidate_models.append(m)
 
@@ -150,29 +153,29 @@ class OllamaClient:
         last_ex = None
 
         for model_name in candidate_models:
-            try:
-                use_json_mode = model_name in json_object_models
-                payload = {
-                    "model": model_name,
-                    "messages": [
-                        {"role": "system", "content": "You are an expert AI assistant. Respond ONLY with valid JSON matching the schema. No markdown, no explanation."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "temperature": temperature,
-                    "max_tokens": 4096,
-                }
-                if use_json_mode:
-                    payload["response_format"] = {"type": "json_object"}
-
-                req = urllib.request.Request(
-                    url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {clean_key}"
-                    }
-                )
+            for try_json_format in (True, False):
                 try:
+                    payload = {
+                        "model": model_name,
+                        "messages": [
+                            {"role": "system", "content": "You are an expert AI assistant. Respond ONLY with a valid JSON object matching the requested schema. Output raw JSON only with no markdown fences."},
+                            {"role": "user", "content": f"{prompt}\n\nPlease output valid JSON only."}
+                        ],
+                        "temperature": temperature,
+                        "max_tokens": 4096,
+                    }
+                    if try_json_format:
+                        payload["response_format"] = {"type": "json_object"}
+
+                    req = urllib.request.Request(
+                        url,
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {clean_key}",
+                            "User-Agent": "JobApplicationAgent/2.0"
+                        }
+                    )
                     with urllib.request.urlopen(req, timeout=45) as resp:
                         data = json.loads(resp.read().decode("utf-8"))
                         content_str = data["choices"][0]["message"]["content"].strip()
@@ -181,9 +184,11 @@ class OllamaClient:
                             if content_str.startswith("json"):
                                 content_str = content_str[4:]
                         parsed = json.loads(content_str.strip())
-                        validated = response_schema(**parsed)
+                        unwrapped = self._unwrap_schema_dict(parsed, response_schema)
+                        validated = response_schema(**unwrapped)
                         logger.info(f"⚡ [Groq/{model_name}] Successfully generated {response_schema.__name__}!")
                         return validated
+
                 except urllib.error.HTTPError as http_err:
                     body = ""
                     try:
@@ -191,14 +196,16 @@ class OllamaClient:
                     except Exception:
                         pass
                     last_ex = http_err
-                    logger.debug(f"[Groq/{model_name}] HTTP {http_err.code}: {body}")
+                    if try_json_format and http_err.code == 400:
+                        continue
+                    logger.warning(f"⚠️ [Groq/{model_name}] HTTP {http_err.code}: {body}")
                     time.sleep(0.2)
-                    continue
-            except Exception as e:
-                last_ex = e
-                logger.debug(f"[Groq/{model_name}] Error: {str(e)[:120]}")
-                time.sleep(0.1)
-                continue
+                    break
+                except Exception as e:
+                    last_ex = e
+                    logger.warning(f"⚠️ [Groq/{model_name}] Error: {str(e)[:120]}")
+                    time.sleep(0.1)
+                    break
 
         raise last_ex or RuntimeError("Groq models exhausted")
 
@@ -213,47 +220,48 @@ class OllamaClient:
         clean_key = api_key.strip().strip("'\"")
         configured_model = getattr(settings, "GEMINI_MODEL", "gemini-2.0-flash").strip().strip("'\"")
 
-        # Canonical model IDs that work on v1beta (verified 2026)
-        # Format: short alias -> canonical ID tried first
         candidate_models = []
         for m in [
             configured_model,
+            "gemini-2.5-flash",
             "gemini-2.0-flash",
-            "gemini-2.0-flash-001",
-            "gemini-2.0-flash-lite",
-            "gemini-2.0-flash-lite-001",
             "gemini-1.5-flash",
-            "gemini-1.5-flash-001",
-            "gemini-1.5-flash-8b",
-            "gemini-1.5-flash-8b-001",
+            "gemini-1.5-pro",
         ]:
             if m and m not in candidate_models:
                 candidate_models.append(m)
 
         last_ex = None
         for model_name in candidate_models:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
-                payload = {
-                    "contents": [
-                        {
-                            "parts": [
-                                {"text": f"You are an expert AI assistant. Respond ONLY with valid JSON matching the schema exactly. No markdown, no explanation.\n\n{prompt}"}
-                            ]
-                        }
-                    ],
-                    "generationConfig": {
-                        "responseMimeType": "application/json",
+            for use_mime_type in (True, False):
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
+                    gen_config = {
                         "temperature": temperature,
                         "maxOutputTokens": 4096,
                     }
-                }
-                req = urllib.request.Request(
-                    url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={"Content-Type": "application/json"}
-                )
-                try:
+                    if use_mime_type:
+                        gen_config["responseMimeType"] = "application/json"
+
+                    payload = {
+                        "contents": [
+                            {
+                                "parts": [
+                                    {"text": f"You are an expert AI assistant. Respond ONLY with valid JSON matching the schema exactly. No markdown, no explanation.\n\n{prompt}\n\nPlease output valid JSON only."}
+                                ]
+                            }
+                        ],
+                        "generationConfig": gen_config
+                    }
+                    req = urllib.request.Request(
+                        url,
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-goog-api-key": clean_key,
+                            "User-Agent": "JobApplicationAgent/2.0"
+                        }
+                    )
                     with urllib.request.urlopen(req, timeout=45) as resp:
                         data = json.loads(resp.read().decode("utf-8"))
                         text_content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -262,9 +270,11 @@ class OllamaClient:
                             if text_content.startswith("json"):
                                 text_content = text_content[4:]
                         parsed = json.loads(text_content.strip())
-                        validated = response_schema(**parsed)
+                        unwrapped = self._unwrap_schema_dict(parsed, response_schema)
+                        validated = response_schema(**unwrapped)
                         logger.info(f"💎 [Gemini/{model_name}] Successfully generated {response_schema.__name__}!")
                         return validated
+
                 except urllib.error.HTTPError as http_err:
                     body = ""
                     try:
@@ -272,14 +282,16 @@ class OllamaClient:
                     except Exception:
                         pass
                     last_ex = http_err
-                    logger.debug(f"[Gemini/{model_name}] HTTP {http_err.code}: {body}")
+                    if use_mime_type and http_err.code in (400, 404):
+                        continue
+                    logger.warning(f"⚠️ [Gemini/{model_name}] HTTP {http_err.code}: {body}")
                     time.sleep(0.2)
-                    continue
-            except Exception as e:
-                last_ex = e
-                logger.debug(f"[Gemini/{model_name}] Error: {str(e)[:120]}")
-                time.sleep(0.1)
-                continue
+                    break
+                except Exception as e:
+                    last_ex = e
+                    logger.warning(f"⚠️ [Gemini/{model_name}] Error: {str(e)[:120]}")
+                    time.sleep(0.1)
+                    break
 
         raise last_ex or RuntimeError("Gemini models exhausted")
 

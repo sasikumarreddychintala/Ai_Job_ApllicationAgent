@@ -3,8 +3,8 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, EmailStr
 
 class ContactInfo(BaseModel):
-    full_name: str = Field(..., description="Full legal or professional name")
-    email: str = Field(..., description="Primary email address")
+    full_name: str = Field(default="Candidate", description="Full legal or professional name")
+    email: str = Field(default="", description="Primary email address")
     phone: Optional[str] = Field(None, description="Phone number")
     location: Optional[str] = Field(None, description="City, State, Country")
     linkedin: Optional[str] = Field(None, description="LinkedIn profile URL")
@@ -12,8 +12,8 @@ class ContactInfo(BaseModel):
     portfolio: Optional[str] = Field(None, description="Personal website/portfolio URL")
 
 class WorkExperience(BaseModel):
-    company: str = Field(..., description="Employer / Company name")
-    position: str = Field(..., description="Job title / Role")
+    company: str = Field(default="", description="Employer / Company name")
+    position: str = Field(default="", description="Job title / Role")
     location: Optional[str] = Field(None, description="Job location or Remote")
     start_date: Optional[str] = Field(None, description="Start date (e.g. MMM YYYY or YYYY)")
     end_date: Optional[str] = Field(None, description="End date (e.g. MMM YYYY, YYYY, or Present)")
@@ -22,26 +22,26 @@ class WorkExperience(BaseModel):
     verified_skills: List[str] = Field(default_factory=list, description="Specific technical/functional skills demonstrated")
 
 class Education(BaseModel):
-    institution: str = Field(..., description="University / School name")
-    degree: str = Field(..., description="Degree obtained (e.g., Bachelor of Science)")
+    institution: str = Field(default="", description="University / School name")
+    degree: str = Field(default="", description="Degree obtained (e.g., Bachelor of Science)")
     field_of_study: Optional[str] = Field(None, description="Major / Field of study")
     graduation_year: Optional[str] = Field(None, description="Graduation year or date")
     gpa: Optional[str] = Field(None, description="GPA if applicable")
 
 class Project(BaseModel):
-    name: str = Field(..., description="Project name")
-    description: str = Field(..., description="Brief description of the project and achievements")
+    name: str = Field(default="", description="Project name")
+    description: str = Field(default="", description="Brief description of the project and achievements")
     technologies: List[str] = Field(default_factory=list, description="Technologies / tools used")
     link: Optional[str] = Field(None, description="URL to project repository or live site")
 
 class Certification(BaseModel):
-    name: str = Field(..., description="Certification title")
+    name: str = Field(default="", description="Certification title")
     issuer: Optional[str] = Field(None, description="Issuing organization")
     date: Optional[str] = Field(None, description="Issue date")
     expiry: Optional[str] = Field(None, description="Expiration date if applicable")
 
 class CandidateProfile(BaseModel):
-    contact_info: ContactInfo
+    contact_info: ContactInfo = Field(default_factory=ContactInfo)
     summary: Optional[str] = Field(None, description="Professional bio or summary")
     skills: List[str] = Field(default_factory=list, description="Categorized technical & soft skills")
     experience: List[WorkExperience] = Field(default_factory=list, description="Work history listed reverse-chronologically")
