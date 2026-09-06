@@ -1052,9 +1052,21 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             }
         }
 
+        let _loadDataFailCount = 0;
         async function loadData() {
             try {
                 const res = await fetch('/api/jobs');
+                if (!res.ok) {
+                    _loadDataFailCount++;
+                    // After 3 consecutive fails, slow down polling to avoid error spam
+                    if (_loadDataFailCount >= 3 && pollInterval) {
+                        clearInterval(pollInterval);
+                        pollInterval = setInterval(async () => { await loadData(); }, 8000); // slow poll on errors
+                    }
+                    console.warn(`[loadData] Server returned ${res.status} (${_loadDataFailCount} consecutive fails)`);
+                    return;
+                }
+                _loadDataFailCount = 0; // reset on success
                 const apps = await res.json();
                 allJobsList = apps || [];
 
@@ -1093,9 +1105,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
                 renderCurrentTable();
             } catch (e) {
-                console.error(e);
+                _loadDataFailCount++;
+                console.warn(`[loadData] Error (${_loadDataFailCount}):`, e.message);
             }
         }
+
 
         async function searchAndScore() {
             let query = document.getElementById('search-query').value;
@@ -1128,18 +1142,24 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 });
 
                 if (pollInterval) clearInterval(pollInterval);
+                _loadDataFailCount = 0; // reset fail counter before polling
                 let pollCount = 0;
                 pollInterval = setInterval(async () => {
                     await loadData();
                     pollCount++;
-                    if (pollCount > 80) { // ~2.5 mins
+                    // Show recovery message if server had 502s
+                    if (_loadDataFailCount >= 3) {
+                        status.innerText = `⚠️ Server is busy/restarting. Retrying every 8s... (${_loadDataFailCount} fails)`;
+                    }
+                    if (pollCount > 100) { // ~4 mins at 2.5s interval
                         clearInterval(pollInterval);
                         isSearching = false;
                         radar.classList.remove('active');
                         btn.disabled = false;
                         status.innerText = `✅ Discovery complete! Found ${liveSessionJobIds.size} new jobs in this run.`;
                     }
-                }, 1500);
+                }, 2500);
+
             } catch (e) {
                 status.innerText = `❌ Error: ${e}`;
                 btn.disabled = false;
