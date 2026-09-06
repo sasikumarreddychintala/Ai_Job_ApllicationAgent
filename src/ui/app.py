@@ -944,7 +944,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
             let resumeHtml = `<button onclick="tailorJobNow(${a.job_id}, this)" class="btn btn-outline" style="font-size:11px; padding:3px 8px; color:#38bdf8; border-color:rgba(56,189,248,0.3); cursor:pointer;">⚡ Tailor PDF</button>`;
             if (a.tailored_resume_path) {
-                resumeHtml = `<a href="/api/view-resume?file=${encodeURIComponent(a.tailored_resume_path)}" target="_blank" class="btn btn-outline" style="font-size:11px; padding:3px 8px; color:#fbbf24; border-color:rgba(245,158,11,0.3); text-decoration:none; font-weight:600;">📄 Tailored PDF ↗</a>`;
+                resumeHtml = `<a href="/api/view-resume?file=${encodeURIComponent(a.tailored_resume_path)}&job_id=${a.job_id}" target="_blank" class="btn btn-outline" style="font-size:11px; padding:3px 8px; color:#fbbf24; border-color:rgba(245,158,11,0.3); text-decoration:none; font-weight:600;">📄 Tailored PDF ↗</a>`;
             }
 
             let srcBadge = `<span style="font-size: 10px; text-transform: uppercase; color: var(--accent);">${a.source || 'Live'}</span>`;
@@ -1006,7 +1006,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 const d = await res.json();
                 if (d.status === 'SUCCESS' && d.tailored_resume_path) {
                     showToast("Resume tailored successfully!");
-                    btn.outerHTML = `<a href="/api/view-resume?file=${encodeURIComponent(d.tailored_resume_path)}" target="_blank" class="btn btn-outline" style="font-size:11px; padding:3px 8px; color:#fbbf24; border-color:rgba(245,158,11,0.3); text-decoration:none; font-weight:600;">📄 Tailored PDF ↗</a>`;
+                    btn.outerHTML = `<a href="/api/view-resume?file=${encodeURIComponent(d.tailored_resume_path)}&job_id=${jobId}" target="_blank" class="btn btn-outline" style="font-size:11px; padding:3px 8px; color:#fbbf24; border-color:rgba(245,158,11,0.3); text-decoration:none; font-weight:600;">📄 Tailored PDF ↗</a>`;
                     await loadData();
                 } else {
                     btn.innerText = "❌ Failed";
@@ -1395,7 +1395,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         }
 
         async function clearAllData() {
-            const confirmed = confirm("⚠️ WIPE ALL DATA & RESUMES?\\n\\nThis will permanently delete:\\n• All searched & discovered jobs\\n• All match evaluations & application statuses\\n• All generated tailored PDF resumes from disk\\n\\nYou will start with a fresh, 100% clean slate.");
+            const confirmed = confirm("⚠️ WIPE ALL DATA & RESUMES?\n\nThis will permanently delete:\n• All searched & discovered jobs\n• All match evaluations & application statuses\n• All generated tailored PDF resumes from disk\n\nYou will start with a fresh, 100% clean slate.");
             if (!confirmed) return;
 
             showToast("Wiping all jobs and tailored resumes...");
@@ -1403,11 +1403,17 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 const res = await fetch('/api/clear', { method: 'POST' });
                 const data = await res.json();
                 if (data.status === 'CLEARED') {
+                    allJobsList = [];
                     liveSessionJobIds.clear();
+                    renderJobs();
+                    document.getElementById('stat-total').innerText = '0';
+                    document.getElementById('stat-qualified').innerText = '0';
+                    document.getElementById('stat-resumes').innerText = '0';
+                    document.getElementById('stat-submitted').innerText = '0';
                     showToast(`✅ ${data.message || 'Wiped successfully!'}`);
                     setTimeout(() => {
                         window.location.reload();
-                    }, 1200);
+                    }, 1000);
                 } else {
                     alert("Clear failed: " + (data.error || 'Unknown error'));
                 }
@@ -1666,21 +1672,72 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/view-resume":
             params = urllib.parse.parse_qs(parsed.query)
             file_param = params.get("file", [""])[0]
+            job_id_param = params.get("job_id", [""])[0]
+
+            resolved_path = None
+
+            # 1. Search for existing file across common candidate paths
             if file_param:
-                file_path = Path(file_param)
-                if file_path.exists() and file_path.suffix.lower() == ".pdf":
+                p = Path(file_param)
+                candidates = [
+                    p,
+                    settings.TAILORED_RESUMES_DIR / p.name,
+                    Path("data") / "tailored_resumes" / p.name,
+                    Path("/app/data/tailored_resumes") / p.name,
+                    settings.BASE_DIR / "data" / "tailored_resumes" / p.name
+                ]
+                for cand in candidates:
+                    if cand.exists() and cand.is_file() and cand.suffix.lower() == ".pdf":
+                        resolved_path = cand
+                        break
+
+            # 2. If missing on disk (e.g. after Render container restart), regenerate on-the-fly!
+            if not resolved_path:
+                job_id = None
+                if job_id_param and job_id_param.isdigit():
+                    job_id = int(job_id_param)
+                elif file_param:
+                    m = re.search(r'job(\d+)', file_param)
+                    if m:
+                        job_id = int(m.group(1))
+
+                if job_id:
                     try:
-                        with open(file_path, "rb") as f:
-                            content = f.read()
-                        self.send_response(200)
-                        self.send_header("Content-Type", "application/pdf")
-                        self.send_header("Content-Disposition", f"inline; filename=\"{file_path.name}\"")
-                        self.send_header("Content-Length", str(len(content)))
-                        self.end_headers()
-                        self.wfile.write(content)
-                        return
+                        logger.info(f"Tailored PDF not found on disk. Auto-regenerating for Job ID {job_id}...")
+                        from src.agents.resume_agent import ResumeTailorAgent
+                        agent = ResumeTailorAgent()
+                        new_pdf = agent.tailor_resume_for_job(job_id)
+                        if new_pdf and Path(new_pdf).exists():
+                            resolved_path = Path(new_pdf)
                     except Exception as e:
-                        logger.error(f"Error serving PDF {file_path}: {e}")
+                        logger.warning(f"On-the-fly resume tailoring notice for Job ID {job_id}: {e}")
+
+            # 3. Fallback to master resume if tailored resume cannot be generated
+            if not resolved_path or not resolved_path.exists():
+                if settings.MASTER_RESUME_PATH.exists():
+                    resolved_path = settings.MASTER_RESUME_PATH
+
+            # 4. Stream PDF to client
+            if resolved_path and resolved_path.exists() and resolved_path.suffix.lower() == ".pdf":
+                try:
+                    with open(resolved_path, "rb") as f:
+                        content = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Disposition", f"inline; filename=\"{resolved_path.name}\"")
+                    self.send_header("Content-Length", str(len(content)))
+                    self.send_header("Cache-Control", "no-cache")
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
+                except Exception as e:
+                    logger.error(f"Error serving PDF {resolved_path}: {e}")
+
+            self.send_response(404)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"<h3>Resume PDF is currently being prepared. Please click 'Tailor PDF' or refresh in a few seconds.</h3>")
+            return
         if path == "/api/outreach":
             params = urllib.parse.parse_qs(parsed.query)
             job_id_param = params.get("job_id", [""])[0]
@@ -1845,7 +1902,6 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/notifications":
-            from config import settings
             self._send_json({
                 "tg_token": getattr(settings, "TELEGRAM_BOT_TOKEN", ""),
                 "tg_chat_id": getattr(settings, "TELEGRAM_CHAT_ID", ""),
@@ -2139,7 +2195,6 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/api/upload-resume":
             import base64
-            from config import settings
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
             payload = json.loads(body) if body else {}
@@ -2273,20 +2328,43 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
                     except Exception:
                         pass
 
-            # 2. Purge database records
+            # 2. Purge database records safely across PostgreSQL and SQLite
             conn = init_db()
-            with conn:
-                conn.execute("DELETE FROM application_events")
-                conn.execute("DELETE FROM applications")
-                conn.execute("DELETE FROM job_matches")
-                conn.execute("DELETE FROM resume_versions")
-                conn.execute("DELETE FROM jobs")
-                conn.execute("DELETE FROM agent_runs")
+            db_type = getattr(settings, "DATABASE_TYPE", "sqlite")
+            try:
+                cur = conn.cursor()
+                if db_type == "postgres":
+                    # In PostgreSQL: TRUNCATE with CASCADE wipes everything cleanly and resets sequences
+                    cur.execute(
+                        "TRUNCATE TABLE application_events, application_answers, applications, job_matches, resume_versions, jobs, agent_runs RESTART IDENTITY CASCADE;"
+                    )
+                    conn.commit()
+                else:
+                    # In SQLite: Delete from child to parent
+                    cur.execute("DELETE FROM application_events")
+                    cur.execute("DELETE FROM application_answers")
+                    cur.execute("DELETE FROM applications")
+                    cur.execute("DELETE FROM job_matches")
+                    cur.execute("DELETE FROM resume_versions")
+                    cur.execute("DELETE FROM jobs")
+                    cur.execute("DELETE FROM agent_runs")
+                    try:
+                        cur.execute("DELETE FROM sqlite_sequence WHERE name IN ('jobs', 'job_matches', 'applications', 'resume_versions', 'application_events', 'agent_runs')")
+                    except Exception:
+                        pass
+                    conn.commit()
+            except Exception as dbe:
                 try:
-                    conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('jobs', 'job_matches', 'applications', 'resume_versions', 'application_events', 'agent_runs')")
+                    conn.rollback()
                 except Exception:
                     pass
-            conn.close()
+                raise dbe
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
             logger.info(f"[CLEAN SLATE] Wiped all database records and {deleted_resumes_count} tailored PDF files.")
             return {
                 "status": "CLEARED",
@@ -2294,13 +2372,13 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
                 "deleted_resumes": deleted_resumes_count
             }
         except Exception as e:
-            logger.error(f"Failed to wipe data: {e}")
+            logger.error(f"Failed to wipe data: {e}", exc_info=True)
             return {"status": "ERROR", "error": str(e)}
 
-    def _send_json(self, data):
+    def _send_json(self, data, status_code: int = 200):
         try:
             payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
-            self.send_response(200)
+            self.send_response(status_code)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
