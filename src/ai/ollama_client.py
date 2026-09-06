@@ -26,6 +26,67 @@ def _pace_ai_requests(min_interval: float = 0.12):
             time.sleep(min_interval - elapsed)
         _LAST_CALL_TIMESTAMP = time.time()
 
+_CACHED_GEMINI_MODELS: list = []
+_CACHED_GROQ_MODELS: list = []
+
+def _get_live_gemini_models(clean_key: str) -> list:
+    global _CACHED_GEMINI_MODELS
+    if _CACHED_GEMINI_MODELS:
+        return _CACHED_GEMINI_MODELS
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={clean_key}"
+        req = urllib.request.Request(
+            url,
+            headers={"x-goog-api-key": clean_key, "User-Agent": "JobApplicationAgent/2.0"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            live = []
+            for m in data.get("models", []):
+                methods = m.get("supportedGenerationMethods", [])
+                if "generateContent" in methods:
+                    name = m.get("name", "").replace("models/", "")
+                    if "flash" in name and name not in live:
+                        live.append(name)
+            for m in data.get("models", []):
+                methods = m.get("supportedGenerationMethods", [])
+                if "generateContent" in methods:
+                    name = m.get("name", "").replace("models/", "")
+                    if name not in live:
+                        live.append(name)
+            if live:
+                _CACHED_GEMINI_MODELS = live
+                logger.info(f"🟢 [Gemini] Auto-discovered {len(live)} active models: {live[:4]}")
+                return live
+    except Exception as e:
+        logger.warning(f"⚠️ [Gemini] Model auto-discovery notice: {e}")
+    return ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]
+
+def _get_live_groq_models(clean_key: str) -> list:
+    global _CACHED_GROQ_MODELS
+    if _CACHED_GROQ_MODELS:
+        return _CACHED_GROQ_MODELS
+    try:
+        url = "https://api.groq.com/openai/v1/models"
+        req = urllib.request.Request(
+            url,
+            headers={"Authorization": f"Bearer {clean_key}", "User-Agent": "JobApplicationAgent/2.0"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            live = []
+            for m in data.get("data", []):
+                m_id = m.get("id", "")
+                if m_id and not any(skip in m_id.lower() for skip in ["whisper", "guard", "embed", "moderation"]):
+                    live.append(m_id)
+            if live:
+                _CACHED_GROQ_MODELS = live
+                logger.info(f"🟢 [Groq] Auto-discovered {len(live)} active models: {live[:4]}")
+                return live
+    except Exception as e:
+        logger.warning(f"⚠️ [Groq] Model auto-discovery notice: {e}")
+    return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+
 class OllamaClient:
     """Reusable HTTP client for Ollama LLM inference with Pydantic JSON schema enforcement & retries."""
 
@@ -132,6 +193,7 @@ class OllamaClient:
                     return val
         return parsed
 
+
     def _generate_groq(
         self,
         prompt: str,
@@ -139,20 +201,23 @@ class OllamaClient:
         api_key: str,
         temperature: float = 0.1
     ) -> T:
-        """Calls Groq Cloud API with automatic active model fallback and rate limit recovery."""
+        """Calls Groq Cloud API with dynamic model discovery and active model fallback."""
         clean_key = api_key.strip().strip("'\"")
         configured_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile").strip().strip("'\"")
 
-        # Active models in Groq (2026). Old decommissioned models removed.
+        # Dynamically discover what models are live for this key
+        live_models = _get_live_groq_models(clean_key)
         candidate_models = []
-        for m in [configured_model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemma2-9b-it"]:
-            if m and m not in candidate_models:
+        if configured_model in live_models:
+            candidate_models.append(configured_model)
+        for m in live_models:
+            if m not in candidate_models:
                 candidate_models.append(m)
 
         url = "https://api.groq.com/openai/v1/chat/completions"
         last_ex = None
 
-        for model_name in candidate_models:
+        for model_name in candidate_models[:6]:
             for try_json_format in (True, False):
                 try:
                     payload = {
@@ -216,23 +281,21 @@ class OllamaClient:
         api_key: str,
         temperature: float = 0.1
     ) -> T:
-        """Calls Google Gemini Cloud API with official stable model fallback."""
+        """Calls Google Gemini Cloud API with dynamic model discovery and active model fallback."""
         clean_key = api_key.strip().strip("'\"")
-        configured_model = getattr(settings, "GEMINI_MODEL", "gemini-2.0-flash").strip().strip("'\"")
+        configured_model = getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash").strip().strip("'\"")
 
+        # Dynamically discover what models are live for this key
+        live_models = _get_live_gemini_models(clean_key)
         candidate_models = []
-        for m in [
-            configured_model,
-            "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-pro",
-        ]:
-            if m and m not in candidate_models:
+        if configured_model in live_models:
+            candidate_models.append(configured_model)
+        for m in live_models:
+            if m not in candidate_models:
                 candidate_models.append(m)
 
         last_ex = None
-        for model_name in candidate_models:
+        for model_name in candidate_models[:6]:
             for use_mime_type in (True, False):
                 try:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
