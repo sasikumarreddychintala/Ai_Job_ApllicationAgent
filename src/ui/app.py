@@ -1395,7 +1395,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         }
 
         async function clearAllData() {
-            const confirmed = confirm("⚠️ WIPE ALL DATA & RESUMES?\n\nThis will permanently delete:\n• All searched & discovered jobs\n• All match evaluations & application statuses\n• All generated tailored PDF resumes from disk\n\nYou will start with a fresh, 100% clean slate.");
+            const confirmed = confirm(`⚠️ WIPE ALL DATA & RESUMES?
+
+This will permanently delete:
+• All searched & discovered jobs
+• All match evaluations & application statuses
+• All generated tailored PDF resumes from disk
+
+You will start with a fresh, 100% clean slate.`);
             if (!confirmed) return;
 
             showToast("Wiping all jobs and tailored resumes...");
@@ -2209,8 +2216,17 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             try:
                 file_bytes = base64.b64decode(b64_data)
                 save_path = settings.MASTER_RESUME_PATH.parent / filename
+                save_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(save_path, "wb") as f:
                     f.write(file_bytes)
+
+                # Also persist to MASTER_RESUME_PATH so agent tailor pipelines always pick up the user resume
+                try:
+                    settings.MASTER_RESUME_PATH.parent.mkdir(parents=True, exist_ok=True)
+                    with open(settings.MASTER_RESUME_PATH, "wb") as mf:
+                        mf.write(file_bytes)
+                except Exception:
+                    pass
 
                 from src.resume.parser import parse_resume_to_candidate_profile
                 profile = parse_resume_to_candidate_profile(save_path)
