@@ -12,6 +12,7 @@ import docx
 from config import settings
 from src.utils.logger import logger
 from src.resume.validator import CandidateProfile, sanitize_sensitive_data
+from src.ai.ollama_client import OllamaClient
 
 def extract_text_from_pdf(pdf_path: Path) -> str:
     """Extracts raw text content from a PDF document using PyMuPDF."""
@@ -115,40 +116,26 @@ JSON Schema format to follow:
 """
 
 def parse_resume_with_ollama(raw_text: str) -> CandidateProfile:
-    """Sends extracted resume text to Ollama to parse into structured CandidateProfile JSON."""
-    url = f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate"
+    """
+    Parses raw resume text into a structured CandidateProfile using the
+    full multi-tier AI failover chain:
+      Tier 1: Groq Cloud  (Llama 3.3 70B -> Gemma 2 9B -> Mixtral)
+      Tier 2: Google Gemini Cloud  (2.0 Flash -> 1.5 Flash -> 1.5 Pro)
+      Tier 3: Local Ollama  (only if running locally)
+      Tier 4: Regex-based deterministic fallback
+    """
     prompt = f"{SYSTEM_PARSING_PROMPT}\n\nRAW RESUME TEXT:\n{raw_text}\n\nJSON OUTPUT:"
 
-    payload = {
-        "model": settings.OLLAMA_MODEL,
-        "prompt": prompt,
-        "format": "json",
-        "stream": False,
-        "keep_alive": "30s",
-        "options": {
-            "temperature": 0.1,
-            "num_thread": 4
-        }
-    }
-
+    client = OllamaClient()
     try:
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=settings.OLLAMA_TIMEOUT) as response:
-            result = json.loads(response.read().decode("utf-8"))
-            json_text = result.get("response", "{}")
-            parsed_dict = json.loads(json_text)
-            
-            # Validate against Pydantic model
-            profile = CandidateProfile(**parsed_dict)
-            logger.info(" Successfully parsed resume into structured CandidateProfile via Ollama.")
-            return profile
-
+        profile = client.generate_json(prompt, CandidateProfile, temperature=0.1)
+        logger.info("Successfully parsed resume into structured CandidateProfile via AI engine.")
+        return profile
     except Exception as e:
-        logger.warning(f"Ollama structured parsing failed or returned invalid JSON ({e}). Falling back to fallback structure.")
+        logger.warning(
+            f"All AI providers failed for resume parsing ({e}). "
+            "Using regex fallback - resume imported but profile detail may be limited."
+        )
         return create_fallback_profile(raw_text)
 
 def create_fallback_profile(raw_text: str) -> CandidateProfile:
