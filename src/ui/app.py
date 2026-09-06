@@ -630,7 +630,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                         </div>
                         <div>
                             <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">App Password (16-char):</label>
-                            <input type="password" id="smtp-pass-input" class="input-box" placeholder="xxxx xxxx xxxx xxxx" style="width:100%;">
+                            <input type="password" id="smtp-pass-input" autocomplete="current-password" class="input-box" placeholder="xxxx xxxx xxxx xxxx" style="width:100%;">
                         </div>
                     </div>
                     <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Sender Full Name:</label>
@@ -1375,7 +1375,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         }
 
         async function clearAllData() {
-            const confirmed = confirm("⚠️ WIPE ALL DATA & RESUMES?\n\nThis will permanently delete:\n• All searched & discovered jobs\n• All match evaluations & application statuses\n• All generated tailored PDF resumes from disk\n\nYou will start with a fresh, 100% clean slate.");
+            const confirmed = confirm("⚠️ WIPE ALL DATA & RESUMES?\\n\\nThis will permanently delete:\\n• All searched & discovered jobs\\n• All match evaluations & application statuses\\n• All generated tailored PDF resumes from disk\\n\\nYou will start with a fresh, 100% clean slate.");
             if (!confirmed) return;
 
             showToast("Wiping all jobs and tailored resumes...");
@@ -2234,7 +2234,7 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             if tailored_dir.exists():
                 for f in tailored_dir.glob("*"):
                     try:
-                        if f.is_file() and f.name != ".gitkeep":
+                        if f.is_file():
                             f.unlink()
                             deleted_resumes_count += 1
                     except Exception:
