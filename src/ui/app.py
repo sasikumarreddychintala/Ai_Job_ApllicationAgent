@@ -1496,6 +1496,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
 class AgentDashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        try:
+            self._handle_get()
+        except Exception as e:
+            logger.error(f"Unhandled error in do_GET ({self.path}): {e}", exc_info=True)
+            self._send_json({"error": str(e), "status": "ERROR"}, status_code=500)
+
+    def _handle_get(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
@@ -1538,38 +1545,79 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
 
         if path in ("/api/jobs", "/api/applications"):
             conn = init_db()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
-                SELECT j.id, j.company, j.title, j.source, j.url, a.status,
-                       COALESCE(MAX(jm.overall_score), 0) AS overall_score,
-                       COALESCE(MAX(jm.decision), 'SKIP') AS decision,
-                       rv.file_path, j.location
-                FROM jobs j
-                JOIN applications a ON j.id = a.job_id
-                LEFT JOIN job_matches jm ON j.id = jm.job_id
-                LEFT JOIN resume_versions rv ON a.resume_version_id = rv.id
-                GROUP BY j.id
-                ORDER BY overall_score DESC, j.id DESC
-                """
-            )
-            rows = cursor.fetchall()
             history = []
-            for r in rows:
-                history.append({
-                    "job_id": r[0],
-                    "company": r[1],
-                    "title": r[2],
-                    "source": r[3],
-                    "url": r[4],
-                    "status": r[5],
-                    "match_score": r[6],
-                    "decision": r[7],
-                    "tailored_resume_path": r[8],
-                    "location": r[9] if len(r) > 9 else "Bengaluru"
-                })
-            conn.close()
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT j.id,
+                           j.company,
+                           j.title,
+                           j.source,
+                           j.url,
+                           COALESCE(a.status, 'DISCOVERED') AS status,
+                           COALESCE(jm.overall_score, 0) AS overall_score,
+                           COALESCE(jm.decision, 'QUALIFIED') AS decision,
+                           rv.file_path,
+                           COALESCE(j.location, 'Bengaluru') AS location
+                    FROM jobs j
+                    LEFT JOIN applications a ON a.id = (
+                        SELECT id FROM applications WHERE job_id = j.id ORDER BY id DESC LIMIT 1
+                    )
+                    LEFT JOIN job_matches jm ON jm.id = (
+                        SELECT id FROM job_matches WHERE job_id = j.id ORDER BY overall_score DESC, id DESC LIMIT 1
+                    )
+                    LEFT JOIN resume_versions rv ON a.resume_version_id = rv.id
+                    ORDER BY COALESCE(jm.overall_score, 0) DESC, j.id DESC
+                    """
+                )
+                rows = cursor.fetchall()
+                for r in rows:
+                    try:
+                        if hasattr(r, "keys") or isinstance(r, dict):
+                            j_id = r["id"]
+                            comp = r["company"]
+                            tit = r["title"]
+                            src = r["source"]
+                            u = r["url"]
+                            st = r["status"]
+                            sc = r["overall_score"]
+                            dec = r["decision"]
+                            rp = r["file_path"]
+                            loc = r["location"]
+                        else:
+                            j_id, comp, tit, src, u, st, sc, dec, rp, loc = r[:10]
+                    except Exception:
+                        j_id = r[0] if len(r) > 0 else 0
+                        comp = r[1] if len(r) > 1 else ""
+                        tit = r[2] if len(r) > 2 else ""
+                        src = r[3] if len(r) > 3 else ""
+                        u = r[4] if len(r) > 4 else ""
+                        st = r[5] if len(r) > 5 else "DISCOVERED"
+                        sc = r[6] if len(r) > 6 else 0
+                        dec = r[7] if len(r) > 7 else "QUALIFIED"
+                        rp = r[8] if len(r) > 8 else None
+                        loc = r[9] if len(r) > 9 else "Bengaluru"
+
+                    history.append({
+                        "job_id": j_id,
+                        "company": comp,
+                        "title": tit,
+                        "source": src,
+                        "url": u,
+                        "status": st or "DISCOVERED",
+                        "match_score": sc or 0,
+                        "decision": dec or "QUALIFIED",
+                        "tailored_resume_path": rp,
+                        "location": loc or "Bengaluru"
+                    })
+            except Exception as e:
+                logger.error(f"Error fetching jobs from database: {e}", exc_info=True)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
             self._send_json(history)
             return
 
@@ -1815,6 +1863,13 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        try:
+            self._handle_post()
+        except Exception as e:
+            logger.error(f"Unhandled error in do_POST ({self.path}): {e}", exc_info=True)
+            self._send_json({"error": str(e), "status": "ERROR"}, status_code=500)
+
+    def _handle_post(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 

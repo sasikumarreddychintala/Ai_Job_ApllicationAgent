@@ -31,3 +31,10 @@ def test_api_profile_response(local_server):
     assert req.status == 200
     data = json.loads(req.read().decode("utf-8"))
     assert isinstance(data, dict)
+
+def test_api_jobs_response(local_server):
+    req = urllib.request.urlopen(f"{local_server}/api/jobs")
+    assert req.status == 200
+    data = json.loads(req.read().decode("utf-8"))
+    assert isinstance(data, list)
+
