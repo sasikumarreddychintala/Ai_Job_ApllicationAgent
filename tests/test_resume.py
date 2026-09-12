@@ -103,3 +103,13 @@ def test_resume_parser_class():
         assert profile.contact_info.full_name is not None
         assert len(profile.skills) > 0
 
+def test_sanitize_pdf_text():
+    from src.resume.versioning import sanitize_pdf_text
+    # Unicode non-breaking hyphen (\u2011), en-dash (\u2013), em-dash (\u2014), minus (\u2212)
+    sample = "high\u2011performance micro\u2013service event\u2014driven real\u2212time \u2018quotes\u2019 \u201csmart\u201d ■"
+    cleaned = sanitize_pdf_text(sample)
+    assert cleaned == 'high-performance micro-service event-driven real-time \'quotes\' "smart" '
+    assert "\u2011" not in cleaned
+    assert "■" not in cleaned
+
+

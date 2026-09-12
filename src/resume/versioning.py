@@ -16,6 +16,27 @@ def sanitize_filename(name: str) -> str:
     clean = re.sub(r"[^\w\s-]", "", name.lower())
     return re.sub(r"[-\s]+", "_", clean).strip("_")
 
+def sanitize_pdf_text(text: str) -> str:
+    """
+    Sanitizes text for ReportLab PDF rendering.
+    Converts Unicode hyphens/dashes, quotes, spaces, and stray symbols to ASCII equivalents
+    so standard Type 1 fonts (Helvetica/Times) do not render black boxes/tofu glyphs (■).
+    """
+    if not text:
+        return ""
+    # Normalize Unicode dashes & hyphens to standard ASCII hyphen
+    text = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\u00ad\ufe58\ufe63\uff0d]", "-", text)
+    # Normalize Unicode quotes to ASCII
+    text = re.sub(r"[\u2018\u2019\u201a\u201b]", "'", text)
+    text = re.sub(r'[\u201c\u201d\u201e\u201f]', '"', text)
+    # Normalize Unicode spaces to standard space
+    text = re.sub(r"[\u00a0\u2002\u2003\u2007\u2009\u202f]", " ", text)
+    # Remove zero-width spaces / BOM
+    text = re.sub(r"[\u200b\u200c\u200d\ufeff]", "", text)
+    # Remove stray box / bullet symbols if any
+    text = re.sub(r"[\u25a0\u25aa\u25cf\u25cb]", "", text)
+    return text
+
 def create_resume_version_filename(job_id: int, company: str, title: str) -> str:
     """Generates a structured, readable filename for tailored resume PDFs."""
     clean_co = sanitize_filename(company)
@@ -109,27 +130,28 @@ def generate_pdf_resume(
 
     # 1. Header (Name & Contact Details)
     c = candidate.contact_info
-    story.append(Paragraph(c.full_name, name_style))
+    story.append(Paragraph(sanitize_pdf_text(c.full_name), name_style))
     story.append(Spacer(1, 4))
 
     contact_parts = [f'<a href="mailto:{c.email}" color="#0284c7"><u>{c.email}</u></a>']
     if c.phone:
-        contact_parts.append(c.phone)
+        contact_parts.append(sanitize_pdf_text(c.phone))
     if c.location:
-        contact_parts.append(c.location)
+        contact_parts.append(sanitize_pdf_text(c.location))
     if c.linkedin:
         contact_parts.append(f'<a href="{c.linkedin}" color="#0284c7"><u>LinkedIn</u></a>')
     if c.portfolio:
         contact_parts.append(f'<a href="{c.portfolio}" color="#0284c7"><u>Portfolio</u></a>')
-    if getattr(c, "github", ""):
-        contact_parts.append(f'<a href="{c.github}" color="#0284c7"><u>GitHub</u></a>')
+    github_link = getattr(c, "github", "") or "https://github.com/sasikumarreddychintala"
+    if github_link:
+        contact_parts.append(f'<a href="{github_link}" color="#0284c7"><u>GitHub</u></a>')
 
     story.append(Paragraph(" &nbsp;|&nbsp; ".join(contact_parts), contact_style))
     story.append(Spacer(1, 4))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#0f172a"), spaceBefore=2, spaceAfter=6))
 
     # 2. Professional Summary
-    summary_text = tailored_output.summary or candidate.summary or "Experienced software professional."
+    summary_text = sanitize_pdf_text(tailored_output.summary or candidate.summary or "Experienced software professional.")
     story.append(Paragraph("PROFESSIONAL SUMMARY", sec_hdr_style))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceBefore=1, spaceAfter=4))
     story.append(Paragraph(summary_text, body_style))
@@ -147,7 +169,7 @@ def generate_pdf_resume(
     for s in raw_skills:
         if s and s.lower() not in seen:
             seen.add(s.lower())
-            all_skills.append(s)
+            all_skills.append(sanitize_pdf_text(s))
 
     cat_map = {
         "Languages & Frameworks": ["Python", "FastAPI", "Django", "Django REST Framework", "Flask", "TypeScript", "JavaScript", "SQLAlchemy", "REST APIs"],
@@ -179,18 +201,21 @@ def generate_pdf_resume(
         story.append(Paragraph("WORK EXPERIENCE", sec_hdr_style))
         story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceBefore=1, spaceAfter=4))
 
-        tailored_bullets = [b.tailored for b in tailored_output.revised_bullet_points if b.tailored]
+        tailored_bullets = [sanitize_pdf_text(b.tailored) for b in tailored_output.revised_bullet_points if b.tailored]
         bullet_idx = 0
 
         for exp in candidate.experience:
-            period = getattr(tailored_output, "tailored_period", None) or f"{exp.start_date or ''} - {exp.end_date or ''}"
-            exp_header = f"<b>{exp.position}</b> | {exp.company} <font color=\"#64748b\">({period})</font>"
+            period = sanitize_pdf_text(getattr(tailored_output, "tailored_period", None) or f"{exp.start_date or ''} - {exp.end_date or ''}")
+            exp_pos = sanitize_pdf_text(exp.position)
+            exp_comp = sanitize_pdf_text(exp.company)
+            exp_header = f"<b>{exp_pos}</b> | {exp_comp} <font color=\"#64748b\">({period})</font>"
             story.append(Paragraph(exp_header, exp_hdr_style))
             story.append(Spacer(1, 3))
 
             bullets_to_show = exp.highlights or []
             for b in bullets_to_show:
-                text_to_print = tailored_bullets[bullet_idx] if bullet_idx < len(tailored_bullets) else b
+                raw_text = tailored_bullets[bullet_idx] if bullet_idx < len(tailored_bullets) else b
+                text_to_print = sanitize_pdf_text(raw_text)
                 story.append(Paragraph(f"&bull;&nbsp;&nbsp;{text_to_print}", bullet_style))
                 bullet_idx += 1
 
@@ -205,10 +230,13 @@ def generate_pdf_resume(
         for proj in candidate.projects:
             tp = tailored_proj_map.get(proj.name.lower())
             techs = tp.technologies if (tp and tp.technologies) else proj.technologies
+            techs = [sanitize_pdf_text(t) for t in (techs or [])]
             desc = tp.description if (tp and tp.description) else proj.description
+            desc = sanitize_pdf_text(desc or "")
+            proj_name = sanitize_pdf_text(proj.name)
             
             tech_str = f" <font color=\"#64748b\">({', '.join(techs)})</font>" if techs else ""
-            story.append(Paragraph(f"<b>{proj.name}</b>{tech_str}", exp_hdr_style))
+            story.append(Paragraph(f"<b>{proj_name}</b>{tech_str}", exp_hdr_style))
             story.append(Spacer(1, 2))
             story.append(Paragraph(f"&bull;&nbsp;&nbsp;{desc}", bullet_style))
             story.append(Spacer(1, 4))
@@ -219,15 +247,17 @@ def generate_pdf_resume(
         story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceBefore=1, spaceAfter=4))
         for edu in candidate.education:
             # Clean degree & field of study formatting
-            deg = edu.degree or "Bachelor of Technology"
-            field = edu.field_of_study or ""
+            deg = sanitize_pdf_text(edu.degree or "Bachelor of Technology")
+            field = sanitize_pdf_text(edu.field_of_study or "")
             if field and field.lower() != "n/a" and field.lower() not in deg.lower():
                 deg_display = f"{deg} in {field}"
             else:
                 deg_display = deg
             
-            grad_display = f" <font color=\"#64748b\">({edu.graduation_year})</font>" if edu.graduation_year else ""
-            edu_line = f"<b>{deg_display}</b> &mdash; {edu.institution}{grad_display}"
+            inst = sanitize_pdf_text(edu.institution or "")
+            grad_yr = sanitize_pdf_text(str(edu.graduation_year or ""))
+            grad_display = f" <font color=\"#64748b\">({grad_yr})</font>" if grad_yr else ""
+            edu_line = f"<b>{deg_display}</b> &mdash; {inst}{grad_display}"
             story.append(Paragraph(edu_line, body_style))
             story.append(Spacer(1, 3))
 

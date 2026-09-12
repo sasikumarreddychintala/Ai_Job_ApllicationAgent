@@ -11,6 +11,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from config import settings
 from src.resume.validator import CandidateProfile
 from src.ai.schemas import ParsedJDRequirements
+from src.resume.versioning import sanitize_pdf_text
 from src.utils.logger import logger
 
 def generate_cover_letter_text(
@@ -137,16 +138,17 @@ def generate_cover_letter_pdf(
     paragraphs = raw_text.split("\n\n")
     # Body starts from "Dear Hiring Manager," onwards
     for p in paragraphs:
-        if any(p.startswith(prefix) for prefix in [date_str, "Hiring Team", company, "Dear", "Sincerely,", c.full_name]):
-            if p.startswith("Dear"):
-                story.append(Paragraph(f"<b>{p}</b>", body_style))
-            elif p.startswith("Sincerely,"):
+        clean_p = sanitize_pdf_text(p)
+        if any(clean_p.startswith(prefix) for prefix in [date_str, "Hiring Team", company, "Dear", "Sincerely,", c.full_name]):
+            if clean_p.startswith("Dear"):
+                story.append(Paragraph(f"<b>{clean_p}</b>", body_style))
+            elif clean_p.startswith("Sincerely,"):
                 story.append(Spacer(1, 6))
-                story.append(Paragraph(p.replace("\n", "<br/>"), body_style))
-            elif not p.startswith(date_str) and not p.startswith("Hiring Team") and not p.startswith(company):
-                story.append(Paragraph(p.replace("\n", "<br/>"), body_style))
+                story.append(Paragraph(clean_p.replace("\n", "<br/>"), body_style))
+            elif not clean_p.startswith(date_str) and not clean_p.startswith("Hiring Team") and not clean_p.startswith(company):
+                story.append(Paragraph(clean_p.replace("\n", "<br/>"), body_style))
         else:
-            story.append(Paragraph(p.replace("\n", " "), body_style))
+            story.append(Paragraph(clean_p.replace("\n", " "), body_style))
 
     doc.build(story)
     logger.info(f" Generated tailored Cover Letter PDF at: {output_path}")
