@@ -79,7 +79,16 @@ class TelegramInteractiveBot:
                 return resp.status == 200
         except Exception as e:
             logger.debug(f"[Telegram Bot] Send message notice: {e}")
-            return False
+            try:
+                payload.pop("parse_mode", None)
+                data = json.dumps(payload).encode("utf-8")
+                req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    return resp.status == 200
+            except Exception as fe:
+                logger.debug(f"[Telegram Bot] Fallback message notice: {fe}")
+                return False
+        return False
 
     def send_document(self, file_path: Path, caption: str = "", target_chat_id: Optional[str] = None) -> bool:
         """Uploads and sends a PDF file (e.g. tailored resume or cover letter) directly to Telegram."""

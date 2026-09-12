@@ -47,6 +47,22 @@ class TelegramNotifier:
                     return True
         except Exception as e:
             logger.warning(f"Telegram notification dispatch notice: {e}")
+            # Robust fallback: Try sending without parse_mode in case markdown entities caused an error
+            try:
+                fallback_payload = dict(payload)
+                fallback_payload.pop("parse_mode", None)
+                fallback_data = json.dumps(fallback_payload).encode("utf-8")
+                fallback_req = urllib.request.Request(
+                    url,
+                    data=fallback_data,
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(fallback_req, timeout=10) as f_resp:
+                    if f_resp.status == 200:
+                        logger.info(" Telegram notification dispatched via plain-text fallback.")
+                        return True
+            except Exception as fe:
+                logger.warning(f"Telegram notification fallback notice: {fe}")
         return False
 
     def send_document(self, file_path, caption: str = "") -> bool:
