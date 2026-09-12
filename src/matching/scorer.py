@@ -46,11 +46,12 @@ SKILL_ALIASES = {
 # IMPORTANT: Each skill must belong to AT MOST ONE cluster to prevent cross-cluster false matches.
 # e.g. "java" and "javascript" are SEPARATE clusters — no shared members.
 SKILL_CLUSTERS = {
-    "python": {"python", "fastapi", "django", "flask", "asyncio", "celery", "pydantic", "sqlalchemy"},
+    "python": {"python", "django", "flask", "asyncio", "celery", "pydantic", "sqlalchemy"},
     "generative ai": {"generative ai", "large language models", "retrieval-augmented generation", "langchain", "llamaindex", "crewai", "ollama", "groq", "openai", "embeddings", "vector databases", "transformers", "hugging face"},
     "postgresql": {"postgresql", "relational database", "mysql", "sqlite", "database design"},
     "docker": {"docker", "containerization", "kubernetes", "docker-compose"},
     "playwright": {"playwright", "selenium", "web automation", "browser automation", "scraping", "beautifulsoup"},
+    # fastapi is the canonical cluster for API/backend work — NOT in "python" cluster to avoid double-counting
     "fastapi": {"fastapi", "rest apis", "microservices", "api development", "backend development"},
     "data analysis": {"data analysis", "pandas", "numpy", "powerbi", "tableau", "data pipelines"},
     "machine learning": {"machine learning", "deep learning", "pytorch", "tensorflow", "scikit-learn", "computer vision", "natural language processing"},

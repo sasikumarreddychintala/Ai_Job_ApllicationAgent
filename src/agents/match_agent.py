@@ -53,6 +53,10 @@ class MatchAgent:
                     """
                     INSERT INTO job_matches (job_id, overall_score, decision, breakdown_json)
                     VALUES (?, ?, ?, ?)
+                    ON CONFLICT(job_id) DO UPDATE SET
+                        overall_score = excluded.overall_score,
+                        decision      = excluded.decision,
+                        breakdown_json = excluded.breakdown_json
                     """,
                     (job_id, eval_result.overall_score, eval_result.decision, breakdown_json)
                 )

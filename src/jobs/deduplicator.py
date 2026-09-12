@@ -4,16 +4,18 @@ from typing import Optional
 from src.database.models import init_db
 from src.utils.logger import logger
 
-def generate_job_fingerprint(company: str, title: str, url: str) -> str:
+def generate_job_fingerprint(company: str, title: str, url: str, location: str = "") -> str:
     """
     Generates a stable, reproducible SHA-256 hash fingerprint for a job listing.
     Normalized strings are lowercased and stripped of punctuation before hashing.
+    Location is included so the same role in different cities is treated as unique.
     """
     norm_company = company.lower().strip()
     norm_title = title.lower().strip()
     norm_url = url.lower().strip().split("?")[0]  # strip URL query parameters for stability
+    norm_location = location.lower().strip()
     
-    raw_str = f"{norm_company}|{norm_title}|{norm_url}"
+    raw_str = f"{norm_company}|{norm_title}|{norm_url}|{norm_location}"
     return hashlib.sha256(raw_str.encode("utf-8")).hexdigest()
 
 def is_job_duplicate(fingerprint: str, url: str, conn: Optional[sqlite3.Connection] = None) -> bool:

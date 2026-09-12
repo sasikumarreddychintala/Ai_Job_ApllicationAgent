@@ -144,11 +144,9 @@ class ResumeTailorAgent:
         title = req_dict.get("title", "Python Backend Developer")
         company = req_dict.get("company", "the company")
 
-        # Custom experience alignment (configured for Sasi; transparent fallback for other users)
+        # Custom experience alignment — driven by CUSTOM_EXPERIENCE_ALIGNMENT config flag (not name matching)
         tailored_period = None
-        is_custom_user = getattr(settings, "CUSTOM_EXPERIENCE_ALIGNMENT", True) and (
-            "sasi" in profile.contact_info.full_name.lower() or "chintala" in profile.contact_info.full_name.lower()
-        )
+        is_custom_user = getattr(settings, "CUSTOM_EXPERIENCE_ALIGNMENT", False)
 
         min_exp = req_dict.get("min_years_experience", 0)
         req_text = f"{title} {' '.join(all_target_skills)} {json.dumps(req_dict)}".lower()

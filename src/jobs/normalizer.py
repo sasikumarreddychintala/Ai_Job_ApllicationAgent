@@ -9,7 +9,7 @@ def normalize_job_listing(raw_job: RawJobListing) -> NormalizedJob:
     clean_location = re.sub(r"\s+", " ", raw_job.location or "Remote").strip()
     clean_description = raw_job.description.strip()
     
-    fingerprint = generate_job_fingerprint(clean_company, clean_title, raw_job.url)
+    fingerprint = generate_job_fingerprint(clean_company, clean_title, raw_job.url, clean_location)
     
     return NormalizedJob(
         fingerprint=fingerprint,

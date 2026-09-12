@@ -102,16 +102,17 @@ class JDAgent:
             ]
 
             # Fast title-skip DISCOVERED → SKIPPED (same logic as finder pre-filter for any that slipped through)
+            # Limit is applied ONLY to valid tech jobs — skipped titles do NOT consume the analysis budget.
             ids_to_analyze = []
             for j_id, title in rows:
+                if len(ids_to_analyze) >= limit:
+                    break
                 t_lower = title.lower()
                 if any(k in t_lower for k in non_tech_keywords):
                     with conn:
                         conn.execute("UPDATE applications SET status = 'SKIPPED' WHERE job_id = ?", (j_id,))
                     continue
                 ids_to_analyze.append(j_id)
-                if len(ids_to_analyze) >= limit:
-                    break
 
             logger.info(f" {len(ids_to_analyze)} jobs queued for parallel JD analysis (limit={limit}).")
 

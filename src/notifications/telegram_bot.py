@@ -427,6 +427,9 @@ class TelegramInteractiveBot:
                 self.send_message(f"✅ *1–2 Yrs Search Complete!*\n\nDiscovered: *{len(discovered)}* | Qualified (≥70%): *{len(qualified)}*", target_chat_id=sender_id)
                 self._handle_command("/top", sender_id, sender_name)
 
+            threading.Thread(target=_bg_jr_search, daemon=True).start()
+            return
+
         elif cmd in ("/ai", "/genai", "/llm"):
             location_arg = " ".join(args) if args else "Bengaluru"
             query_arg = "AI Engineer GenAI LLM LangChain RAG 0-2 years"
