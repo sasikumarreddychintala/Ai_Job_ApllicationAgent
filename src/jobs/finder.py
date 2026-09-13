@@ -40,6 +40,7 @@ from src.jobs.source_adapters.hasjob_adapter import HasjobAdapter
 from src.jobs.source_adapters.otta_adapter import OttaJobAdapter
 from src.jobs.source_adapters.dynamite_adapter import DynamiteJobsAdapter
 from src.jobs.source_adapters.aijobs_adapter import AIJobsNetAdapter
+from src.jobs.source_adapters.jobspy_adapter import JobSpyAdapter
 
 # ---------------------------------------------------------------------------
 # Role Synonym Expansion — ensures all equivalent job titles are searched
@@ -132,6 +133,7 @@ class JobFinder:
 
     def __init__(self, adapters: Optional[List[BaseJobAdapter]] = None, db_path=settings.DATABASE_PATH):
         self.adapters = adapters if adapters is not None else [
+            JobSpyAdapter(),          # Unified: LinkedIn, Indeed, Glassdoor, Google Jobs
             LinkedInJobAdapter(),
             YCStartupJobAdapter(),
             HasjobAdapter(),
@@ -172,6 +174,7 @@ class JobFinder:
     ) -> "JobFinder":
         """Factory for live multi-board discovery across 28+ portals and direct ATS sources."""
         adapters: List[BaseJobAdapter] = [
+            JobSpyAdapter(),          # Unified: LinkedIn, Indeed, Glassdoor, Google Jobs
             LinkedInJobAdapter(),
             YCStartupJobAdapter(),
             HasjobAdapter(),

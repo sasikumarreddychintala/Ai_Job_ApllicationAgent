@@ -1,4 +1,5 @@
 import json
+import os
 import urllib.request
 from pathlib import Path
 from typing import Dict, Any
@@ -117,15 +118,60 @@ JSON Schema format to follow:
 }
 """
 
-def parse_resume_with_ollama(raw_text: str) -> CandidateProfile:
+def _parse_pdf_with_gemini_vision(pdf_path: Path) -> str:
+    """
+    Sends raw PDF bytes to Gemini multimodal API to extract text.
+    Used when PyMuPDF returns empty/very short text (scanned or image-based PDFs).
+    Returns the extracted text string, or "" on failure.
+    """
+    gemini_key = getattr(settings, "GEMINI_API_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
+    if not gemini_key:
+        return ""
+    try:
+        from google import genai as _genai
+        from google.genai import types as _gtypes
+
+        pdf_bytes = pdf_path.read_bytes()
+        client = _genai.Client(api_key=gemini_key.strip().strip("'\""))
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                _gtypes.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
+                "Extract ALL text content from this resume PDF exactly as written. "
+                "Preserve section headers, bullet points, dates, company names, and job titles. "
+                "Output plain text only — no commentary."
+            ]
+        )
+        extracted = (response.text or "").strip()
+        if extracted:
+            logger.info(f"💎 [Gemini Vision] Extracted {len(extracted)} chars from PDF via vision model.")
+        return extracted
+    except ImportError:
+        logger.debug("google-genai not installed; Gemini Vision PDF parsing unavailable.")
+        return ""
+    except Exception as e:
+        logger.warning(f"⚠️ [Gemini Vision] PDF extraction failed ({e}); falling back to PyMuPDF.")
+        return ""
+
+
+def parse_resume_with_ollama(raw_text: str, pdf_path: Path = None) -> "CandidateProfile":
     """
     Parses raw resume text into a structured CandidateProfile using the
     full multi-tier AI failover chain:
-      Tier 1: Groq Cloud  (Llama 3.3 70B -> Gemma 2 9B -> Mixtral)
-      Tier 2: Google Gemini Cloud  (2.0 Flash -> 1.5 Flash -> 1.5 Pro)
+      Tier 0: Gemini Vision (direct PDF bytes) — handles scanned/image PDFs
+      Tier 1: Groq Cloud  (Llama 3.3 70B → Gemma 2 9B → Mixtral)
+      Tier 2: Google Gemini Cloud  (2.0 Flash → 1.5 Flash → 1.5 Pro)
       Tier 3: Local Ollama  (only if running locally)
       Tier 4: Regex-based deterministic fallback
     """
+    # Tier 0: If we got a PDF path and the extracted text is too short (scanned/image PDF),
+    # try Gemini Vision to read the raw bytes directly.
+    if pdf_path is not None and len(raw_text.strip()) < 200:
+        vision_text = _parse_pdf_with_gemini_vision(pdf_path)
+        if vision_text and len(vision_text) > len(raw_text):
+            logger.info("💎 [Gemini Vision] Using vision-extracted text (richer than PyMuPDF output).")
+            raw_text = vision_text
+
     prompt = f"{SYSTEM_PARSING_PROMPT}\n\nRAW RESUME TEXT:\n{raw_text}\n\nJSON OUTPUT:"
 
     client = OllamaClient()
@@ -516,14 +562,15 @@ def create_fallback_profile(raw_text: str) -> CandidateProfile:
     return PurePythonResumeParser.parse(raw_text)
 
 
-def parse_resume_to_candidate_profile(file_path: Path) -> CandidateProfile:
+def parse_resume_to_candidate_profile(file_path: Path) -> "CandidateProfile":
     """
     Extracts text from PDF/DOCX and parses into a complete CandidateProfile.
-    Uses AI if keys/models are available; automatically fails over to the
-    deterministic PurePythonResumeParser with zero loss of data or accuracy.
+    Passes the pdf_path to enable Gemini Vision for scanned/image-based PDFs.
     """
-    raw_text = extract_resume_text(file_path)
-    return parse_resume_with_ollama(raw_text)
+    path = Path(file_path)
+    raw_text = extract_resume_text(path)
+    pdf_path = path if path.suffix.lower() == ".pdf" else None
+    return parse_resume_with_ollama(raw_text, pdf_path=pdf_path)
 
 
 class ResumeParser:

@@ -281,11 +281,15 @@ class OllamaClient:
         api_key: str,
         temperature: float = 0.1
     ) -> T:
-        """Calls Google Gemini Cloud API with dynamic model discovery and active model fallback."""
+        """
+        Calls Google Gemini Cloud API.
+
+        Strategy (priority):
+          1. Official google-genai SDK with response_schema= (native Pydantic enforcement)
+          2. Raw urllib.request fallback (existing logic, when SDK not installed)
+        """
         clean_key = api_key.strip().strip("'\"")
         configured_model = getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash").strip().strip("'\"")
-
-        # Dynamically discover what models are live for this key
         live_models = _get_live_gemini_models(clean_key)
         candidate_models = []
         if configured_model in live_models:
@@ -295,6 +299,41 @@ class OllamaClient:
                 candidate_models.append(m)
 
         last_ex = None
+
+        # --- Strategy 1: Official google-genai SDK with response_schema ---
+        try:
+            from google import genai as _genai
+            from google.genai import types as _gtypes
+
+            client = _genai.Client(api_key=clean_key)
+
+            for model_name in candidate_models[:4]:
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=f"You are an expert AI assistant. Output ONLY valid JSON.\n\n{prompt}",
+                        config=_gtypes.GenerateContentConfig(
+                            temperature=temperature,
+                            max_output_tokens=4096,
+                            response_mime_type="application/json",
+                            response_schema=response_schema,
+                        ),
+                    )
+                    text = response.text.strip() if response.text else ""
+                    if text:
+                        # SDK enforces the schema — parse directly
+                        validated = response_schema.model_validate_json(text)
+                        logger.info(f"💎 [Gemini-SDK/{model_name}] Generated {response_schema.__name__} via response_schema!")
+                        return validated
+                except Exception as sdk_err:
+                    last_ex = sdk_err
+                    logger.warning(f"⚠️ [Gemini-SDK/{model_name}] {str(sdk_err)[:120]}")
+                    continue
+
+        except ImportError:
+            logger.debug("google-genai SDK not installed — using urllib fallback for Gemini.")
+
+        # --- Strategy 2: Raw urllib fallback (original logic) ---
         for model_name in candidate_models[:6]:
             for use_mime_type in (True, False):
                 try:
@@ -335,7 +374,7 @@ class OllamaClient:
                         parsed = json.loads(text_content.strip())
                         unwrapped = self._unwrap_schema_dict(parsed, response_schema)
                         validated = response_schema(**unwrapped)
-                        logger.info(f"💎 [Gemini/{model_name}] Successfully generated {response_schema.__name__}!")
+                        logger.info(f"💎 [Gemini-urllib/{model_name}] Successfully generated {response_schema.__name__}!")
                         return validated
 
                 except urllib.error.HTTPError as http_err:
@@ -347,12 +386,12 @@ class OllamaClient:
                     last_ex = http_err
                     if use_mime_type and http_err.code in (400, 404):
                         continue
-                    logger.warning(f"⚠️ [Gemini/{model_name}] HTTP {http_err.code}: {body}")
+                    logger.warning(f"⚠️ [Gemini-urllib/{model_name}] HTTP {http_err.code}: {body}")
                     time.sleep(0.2)
                     break
                 except Exception as e:
                     last_ex = e
-                    logger.warning(f"⚠️ [Gemini/{model_name}] Error: {str(e)[:120]}")
+                    logger.warning(f"⚠️ [Gemini-urllib/{model_name}] Error: {str(e)[:120]}")
                     time.sleep(0.1)
                     break
 

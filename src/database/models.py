@@ -206,6 +206,32 @@ ALTER TABLE IF EXISTS application_answers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS application_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS agent_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS settings ENABLE ROW LEVEL SECURITY;
+
+-- ── GIN Full-Text Search Indexes ─────────────────────────────────────────────
+-- Enables sub-5ms keyword search across job titles, companies, and descriptions
+-- instead of the default O(n) LIKE/ILIKE scan over raw_jd.
+--
+-- Usage in queries:
+--   SELECT * FROM jobs WHERE to_tsvector('english', title || ' ' || COALESCE(normalized_jd,'')) @@ plainto_tsquery('english', 'fastapi python');
+-- ---------------------------------------------------------------------------
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS search_vector tsvector
+    GENERATED ALWAYS AS (
+        to_tsvector('english',
+            coalesce(title, '') || ' ' ||
+            coalesce(company, '') || ' ' ||
+            coalesce(location, '') || ' ' ||
+            coalesce(normalized_jd, '') || ' ' ||
+            coalesce(raw_jd, '')
+        )
+    ) STORED;
+
+CREATE INDEX IF NOT EXISTS jobs_search_gin ON jobs USING GIN(search_vector);
+
+-- Composite index for fast status-filtered ordered job lookups
+CREATE INDEX IF NOT EXISTS apps_status_updated ON applications(status, updated_at DESC);
+
+-- Index for fast match score lookups
+CREATE INDEX IF NOT EXISTS job_matches_score ON job_matches(job_id, overall_score DESC);
 """
 
 class PostgresCursorWrapper:
