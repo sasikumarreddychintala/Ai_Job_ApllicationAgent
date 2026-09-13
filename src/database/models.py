@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 -- Qualification & Match Evaluations
 CREATE TABLE IF NOT EXISTS job_matches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id INTEGER NOT NULL,
+    job_id INTEGER NOT NULL UNIQUE,
     overall_score INTEGER NOT NULL,
     decision TEXT CHECK(decision IN ('SKIP', 'APPLY', 'HIGH', 'VERY_HIGH')) NOT NULL,
     breakdown_json TEXT NOT NULL,
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 -- Qualification & Match Evaluations
 CREATE TABLE IF NOT EXISTS job_matches (
     id SERIAL PRIMARY KEY,
-    job_id INTEGER NOT NULL REFERENCES jobs(id),
+    job_id INTEGER NOT NULL UNIQUE REFERENCES jobs(id),
     overall_score INTEGER NOT NULL,
     decision TEXT NOT NULL,
     breakdown_json TEXT NOT NULL,
