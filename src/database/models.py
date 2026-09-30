@@ -391,6 +391,26 @@ def init_db(db_path: Path = settings.DATABASE_PATH):
                                     cur.execute(stmt)
                                 except Exception:
                                     raw_conn.rollback()   # isolate failed DDL
+                            # ── Live migration: add UNIQUE(job_id) on job_matches if absent ──
+                            # Needed for ON CONFLICT(job_id) upsert in match_agent.py.
+                            # Safe to run on existing Supabase tables created before this fix.
+                            try:
+                                cur.execute("""
+                                    DO $$
+                                    BEGIN
+                                        IF NOT EXISTS (
+                                            SELECT 1 FROM pg_constraint
+                                            WHERE conrelid = 'job_matches'::regclass
+                                            AND   contype  = 'u'
+                                            AND   conname LIKE '%job_id%'
+                                        ) THEN
+                                            ALTER TABLE job_matches ADD CONSTRAINT job_matches_job_id_unique UNIQUE (job_id);
+                                        END IF;
+                                    END $$;
+                                """)
+                            except Exception as mig_err:
+                                raw_conn.rollback()
+                                logger.warning(f"⚠️ job_matches UNIQUE migration notice (non-fatal): {mig_err}")
                         raw_conn.commit()
                         logger.info("🟢 Supabase PostgreSQL connected — schema ready!")
                         _DB_INITIALIZED = True

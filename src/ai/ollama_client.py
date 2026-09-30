@@ -46,12 +46,17 @@ def _get_live_gemini_models(clean_key: str) -> list:
                 methods = m.get("supportedGenerationMethods", [])
                 if "generateContent" in methods:
                     name = m.get("name", "").replace("models/", "")
+                    # Skip TTS/audio/vision-only models — they 400 on text requests
+                    if any(x in name for x in ["tts", "audio", "image-generation"]):
+                        continue
                     if "flash" in name and name not in live:
                         live.append(name)
             for m in data.get("models", []):
                 methods = m.get("supportedGenerationMethods", [])
                 if "generateContent" in methods:
                     name = m.get("name", "").replace("models/", "")
+                    if any(x in name for x in ["tts", "audio", "image-generation"]):
+                        continue
                     if name not in live:
                         live.append(name)
             if live:
@@ -60,12 +65,24 @@ def _get_live_gemini_models(clean_key: str) -> list:
                 return live
     except Exception as e:
         logger.warning(f"⚠️ [Gemini] Model auto-discovery notice: {e}")
-    return ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]
+    # Fallback: gemini-2.5-flash is 404 for new API keys — use 2.0-flash and lite
+    return ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
 
 def _get_live_groq_models(clean_key: str) -> list:
     global _CACHED_GROQ_MODELS
     if _CACHED_GROQ_MODELS:
         return _CACHED_GROQ_MODELS
+
+    # Hard blocklist: models confirmed 404 (removed) or 400 (terms-blocked) every call.
+    # This is checked even if /models API still lists them, since the list endpoint
+    # doesn't reflect terms acceptance or availability status accurately.
+    _GROQ_BLOCKLIST = {
+        "qwen/qwen3.6-27b",               # 404 — model removed from Groq
+        "groq/compound",                   # 404 — model removed from Groq
+        "groq/compound-mini",              # 404 — model removed from Groq
+        "canopylabs/orpheus-v1-english",   # 400 — requires org-admin terms acceptance
+    }
+
     try:
         url = "https://api.groq.com/openai/v1/models"
         req = urllib.request.Request(
@@ -77,8 +94,13 @@ def _get_live_groq_models(clean_key: str) -> list:
             live = []
             for m in data.get("data", []):
                 m_id = m.get("id", "")
-                if m_id and not any(skip in m_id.lower() for skip in ["whisper", "guard", "embed", "moderation"]):
-                    live.append(m_id)
+                if not m_id:
+                    continue
+                if m_id in _GROQ_BLOCKLIST:
+                    continue
+                if any(skip in m_id.lower() for skip in ["whisper", "guard", "embed", "moderation"]):
+                    continue
+                live.append(m_id)
             if live:
                 _CACHED_GROQ_MODELS = live
                 logger.info(f"🟢 [Groq] Auto-discovered {len(live)} active models: {live[:4]}")
