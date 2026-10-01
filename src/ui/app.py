@@ -2439,8 +2439,15 @@ def run_dashboard_server(host: str = "0.0.0.0", port: int = 8000):
         logger.debug(f"Scheduler auto-start notice: {se}")
 
     # Auto-seed / Auto-discover on startup if database is fresh
+    # NOTE: Disabled on cloud deployments to prevent OOM crashes.
+    # Trigger job discovery manually from the dashboard or via Telegram /scout command.
     def _startup_scout():
         try:
+            import os
+            # Skip auto-scout on cloud/production to avoid OOM on constrained memory
+            if os.environ.get("WEBSITES_PORT") or os.environ.get("RENDER"):
+                logger.info("[STARTUP] Cloud deployment detected — skipping auto-scout to conserve memory.")
+                return
             conn = init_db()
             c = conn.cursor()
             c.execute("SELECT COUNT(*) FROM jobs")
