@@ -135,6 +135,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          platforms: linux/amd64
+          provenance: false
           tags: ghcr.io/sasikumarreddychintala/ai-job-agent:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
