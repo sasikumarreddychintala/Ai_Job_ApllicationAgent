@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS resume_versions (
     file_path TEXT NOT NULL,
     tailored_text TEXT NOT NULL,
     changes_json TEXT,
+    pdf_data BLOB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(job_id) REFERENCES jobs(id)
 );
@@ -146,6 +147,7 @@ CREATE TABLE IF NOT EXISTS resume_versions (
     file_path TEXT NOT NULL,
     tailored_text TEXT NOT NULL,
     changes_json TEXT,
+    pdf_data BYTEA,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -411,6 +413,23 @@ def init_db(db_path: Path = settings.DATABASE_PATH):
                             except Exception as mig_err:
                                 raw_conn.rollback()
                                 logger.warning(f"⚠️ job_matches UNIQUE migration notice (non-fatal): {mig_err}")
+                            # ── Live migration: add pdf_data BYTEA on resume_versions if absent ──
+                            try:
+                                cur.execute("""
+                                    DO $$
+                                    BEGIN
+                                        IF NOT EXISTS (
+                                            SELECT 1 FROM information_schema.columns
+                                            WHERE table_name = 'resume_versions'
+                                            AND column_name = 'pdf_data'
+                                        ) THEN
+                                            ALTER TABLE resume_versions ADD COLUMN pdf_data BYTEA;
+                                        END IF;
+                                    END $$;
+                                """)
+                            except Exception as mig_err2:
+                                raw_conn.rollback()
+                                logger.warning(f"⚠️ resume_versions pdf_data migration notice (non-fatal): {mig_err2}")
                         raw_conn.commit()
                         logger.info("🟢 Supabase PostgreSQL connected — schema ready!")
                         _DB_INITIALIZED = True

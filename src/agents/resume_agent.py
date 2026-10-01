@@ -71,18 +71,27 @@ class ResumeTailorAgent:
             pdf_path = self.output_dir / filename
             generate_pdf_resume(profile, tailored_output, pdf_path)
 
-            # Record in SQLite resume_versions table & advance state to RESUME_READY
+            # Read generated PDF bytes for database storage (survives container restarts)
+            pdf_bytes = None
+            try:
+                if pdf_path.exists():
+                    pdf_bytes = pdf_path.read_bytes()
+            except Exception as rb_err:
+                logger.debug(f"Could not read PDF bytes for DB storage: {rb_err}")
+
+            # Record in resume_versions table & advance state to RESUME_READY
             with conn:
                 cursor.execute(
                     """
-                    INSERT INTO resume_versions (job_id, file_path, tailored_text, changes_json)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO resume_versions (job_id, file_path, tailored_text, changes_json, pdf_data)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
                     (
                         job_id,
                         str(pdf_path),
                         tailored_output.summary,
-                        json.dumps(tailored_output.model_dump(), ensure_ascii=False)
+                        json.dumps(tailored_output.model_dump(), ensure_ascii=False),
+                        pdf_bytes
                     )
                 )
                 resume_version_id = cursor.lastrowid
@@ -96,7 +105,7 @@ class ResumeTailorAgent:
                     (resume_version_id, job_id)
                 )
 
-            logger.info(f" Successfully tailored resume for Job ID {job_id}. Status updated to RESUME_READY.")
+            logger.info(f"✅ Successfully tailored resume for Job ID {job_id}. PDF stored in DB ({len(pdf_bytes) if pdf_bytes else 0} bytes). Status → RESUME_READY.")
             return pdf_path
 
         finally:

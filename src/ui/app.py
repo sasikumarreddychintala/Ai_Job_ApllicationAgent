@@ -1681,10 +1681,45 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             file_param = params.get("file", [""])[0]
             job_id_param = params.get("job_id", [""])[0]
 
-            resolved_path = None
+            # Helper: extract job_id from params or filename
+            def _extract_job_id():
+                if job_id_param and job_id_param.isdigit():
+                    return int(job_id_param)
+                if file_param:
+                    m = re.search(r'job(\d+)', file_param)
+                    if m:
+                        return int(m.group(1))
+                return None
 
-            # 1. Search for existing file across common candidate paths
-            if file_param:
+            pdf_content = None
+            pdf_filename = "tailored_resume.pdf"
+
+            # 1. Try database first — survives container restarts
+            job_id = _extract_job_id()
+            if job_id:
+                try:
+                    db_conn = init_db()
+                    db_cur = db_conn.cursor()
+                    db_cur.execute(
+                        "SELECT pdf_data, file_path FROM resume_versions WHERE job_id = ? ORDER BY created_at DESC LIMIT 1",
+                        (job_id,)
+                    )
+                    row = db_cur.fetchone()
+                    db_conn.close()
+                    if row and row[0]:
+                        raw = row[0]
+                        # psycopg2 returns memoryview for BYTEA; sqlite3 returns bytes
+                        pdf_content = bytes(raw) if not isinstance(raw, bytes) else raw
+                        try:
+                            pdf_filename = Path(row[1]).name
+                        except Exception:
+                            pdf_filename = f"tailored_job{job_id}.pdf"
+                        logger.info(f"✅ Serving resume for Job ID {job_id} from database ({len(pdf_content)} bytes).")
+                except Exception as db_err:
+                    logger.debug(f"DB resume lookup notice: {db_err}")
+
+            # 2. Fallback: search for existing file on disk
+            if not pdf_content and file_param:
                 p = Path(file_param)
                 candidates = [
                     p,
@@ -1695,56 +1730,55 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
                 ]
                 for cand in candidates:
                     if cand.exists() and cand.is_file() and cand.suffix.lower() == ".pdf":
-                        resolved_path = cand
+                        try:
+                            pdf_content = cand.read_bytes()
+                            pdf_filename = cand.name
+                            logger.info(f"Serving resume from disk: {cand}")
+                        except Exception:
+                            pass
                         break
 
-            # 2. If missing on disk (e.g. after Render container restart), regenerate on-the-fly!
-            if not resolved_path:
-                job_id = None
-                if job_id_param and job_id_param.isdigit():
-                    job_id = int(job_id_param)
-                elif file_param:
-                    m = re.search(r'job(\d+)', file_param)
-                    if m:
-                        job_id = int(m.group(1))
-
+            # 3. If still missing — regenerate on-the-fly and store in DB
+            if not pdf_content:
+                job_id = job_id or _extract_job_id()
                 if job_id:
                     try:
-                        logger.info(f"Tailored PDF not found on disk. Auto-regenerating for Job ID {job_id}...")
+                        logger.info(f"Tailored PDF not found. Auto-regenerating for Job ID {job_id}...")
                         from src.agents.resume_agent import ResumeTailorAgent
                         agent = ResumeTailorAgent()
                         new_pdf = agent.tailor_resume_for_job(job_id)
                         if new_pdf and Path(new_pdf).exists():
-                            resolved_path = Path(new_pdf)
+                            pdf_content = Path(new_pdf).read_bytes()
+                            pdf_filename = Path(new_pdf).name
                     except Exception as e:
                         logger.warning(f"On-the-fly resume tailoring notice for Job ID {job_id}: {e}")
 
-            # 3. Fallback to master resume if tailored resume cannot be generated
-            if not resolved_path or not resolved_path.exists():
+            # 4. Fallback to master resume
+            if not pdf_content:
                 if settings.MASTER_RESUME_PATH.exists():
-                    resolved_path = settings.MASTER_RESUME_PATH
+                    try:
+                        pdf_content = settings.MASTER_RESUME_PATH.read_bytes()
+                        pdf_filename = settings.MASTER_RESUME_PATH.name
+                    except Exception:
+                        pass
 
-            # 4. Stream PDF to client
-            if resolved_path and resolved_path.exists() and resolved_path.suffix.lower() == ".pdf":
-                try:
-                    with open(resolved_path, "rb") as f:
-                        content = f.read()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/pdf")
-                    self.send_header("Content-Disposition", f"inline; filename=\"{resolved_path.name}\"")
-                    self.send_header("Content-Length", str(len(content)))
-                    self.send_header("Cache-Control", "no-cache")
-                    self.end_headers()
-                    self.wfile.write(content)
-                    return
-                except Exception as e:
-                    logger.error(f"Error serving PDF {resolved_path}: {e}")
+            # 5. Stream PDF to client
+            if pdf_content:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/pdf")
+                self.send_header("Content-Disposition", f"inline; filename=\"{pdf_filename}\"")
+                self.send_header("Content-Length", str(len(pdf_content)))
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                self.wfile.write(pdf_content)
+                return
 
             self.send_response(404)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(b"<h3>Resume PDF is currently being prepared. Please click 'Tailor PDF' or refresh in a few seconds.</h3>")
             return
+
         if path == "/api/outreach":
             params = urllib.parse.parse_qs(parsed.query)
             job_id_param = params.get("job_id", [""])[0]
