@@ -296,6 +296,7 @@ class PostgresCursorWrapper:
 class PostgresConnectionWrapper:
     def __init__(self, conn):
         self._conn = conn
+        self._closed = False
 
     def cursor(self):
         import psycopg2.extras
@@ -314,7 +315,14 @@ class PostgresConnectionWrapper:
         self._conn.rollback()
 
     def close(self):
-        self._conn.close()
+        """Returns connection to pool for reuse (does NOT close the physical connection)."""
+        if not self._closed:
+            self._closed = True
+            try:
+                self._conn.rollback()  # Reset transaction state before returning to pool
+            except Exception:
+                pass
+            _return_pg_conn(self._conn)
 
     def __enter__(self):
         return self
@@ -325,17 +333,19 @@ class PostgresConnectionWrapper:
         else:
             self.rollback()
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# PostgreSQL helpers — Transaction Mode pooler (port 6543)
-# Each caller gets its OWN connection. Supabase Transaction Mode supports
-# hundreds of short-lived concurrent connections, so no singleton is needed.
-# A singleton shared across 16+ threads causes "connection already closed"
-# because one thread's commit/rollback can corrupt the shared state.
+# PostgreSQL Connection Pool — ThreadedConnectionPool
+# Keeps min=2 persistent connections alive, scales up to max=10 under load.
+# Eliminates per-request DNS lookups that caused "Temporary failure in name
+# resolution" crashes under concurrent job discovery threads.
 # ─────────────────────────────────────────────────────────────────────────────
 
-_CONVERTED_DB_URL: str = ""   # Cached once so the port-switch log fires only once
-_DB_INITIALIZED = False        # DDL migration flag — runs once per process
-_DDL_LOCK = None               # Serialises the one-time schema migration
+_CONVERTED_DB_URL: str = ""    # Cached once so the port-switch log fires only once
+_DB_INITIALIZED = False         # DDL migration flag — runs once per process
+_DDL_LOCK = None                # Serialises the one-time schema migration
+_PG_POOL = None                 # Global ThreadedConnectionPool
+_POOL_LOCK = None               # Lock for pool initialization
 
 def _get_ddl_lock():
     global _DDL_LOCK
@@ -343,6 +353,13 @@ def _get_ddl_lock():
         import threading
         _DDL_LOCK = threading.Lock()
     return _DDL_LOCK
+
+def _get_pool_lock():
+    global _POOL_LOCK
+    if _POOL_LOCK is None:
+        import threading
+        _POOL_LOCK = threading.Lock()
+    return _POOL_LOCK
 
 def _get_pg_url() -> str:
     """Returns the Transaction-Mode Supabase URL, switching port once if needed."""
@@ -357,14 +374,37 @@ def _get_pg_url() -> str:
         _CONVERTED_DB_URL = raw
     return _CONVERTED_DB_URL
 
+def _get_pg_pool():
+    """Returns the global ThreadedConnectionPool, creating it if needed."""
+    global _PG_POOL
+    if _PG_POOL is not None:
+        return _PG_POOL
+    with _get_pool_lock():
+        if _PG_POOL is not None:
+            return _PG_POOL
+        import psycopg2.pool
+        url = _get_pg_url()
+        _PG_POOL = psycopg2.pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=10,
+            dsn=url,
+            connect_timeout=15,
+            options="-c statement_timeout=30000"
+        )
+        logger.info("🏊 PostgreSQL connection pool created (min=2, max=10).")
+    return _PG_POOL
+
 def _new_pg_conn() -> object:
-    """Opens a fresh psycopg2 connection to Supabase Transaction Mode pooler."""
-    import psycopg2
-    return psycopg2.connect(
-        _get_pg_url(),
-        connect_timeout=15,
-        options="-c statement_timeout=30000"
-    )
+    """Borrows a connection from the pool (creates pool if first call)."""
+    return _get_pg_pool().getconn()
+
+def _return_pg_conn(conn) -> None:
+    """Returns a connection back to the pool for reuse."""
+    try:
+        pool = _get_pg_pool()
+        pool.putconn(conn)
+    except Exception as e:
+        logger.debug(f"Pool return notice: {e}")
 
 def init_db(db_path: Path = settings.DATABASE_PATH):
     """Returns a database connection (PostgreSQL or SQLite).

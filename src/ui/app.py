@@ -2440,14 +2440,10 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
         pass
 
 def run_dashboard_server(host: str = "0.0.0.0", port: int = 8000):
-    """Starts local HTTP dashboard server (threaded for SSE support and mobile accessible)."""
-    class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
-        daemon_threads = True
-        def handle_error(self, request, client_address):
-            # Suppress normal client disconnection errors silently
-            pass
-
-    server = ThreadedHTTPServer((host, port), AgentDashboardHandler)
+    """Starts the AI Job Agent dashboard.
+    Uses Uvicorn (ASGI) + FastAPI when available for production performance,
+    falls back to the classic ThreadedHTTPServer for local development.
+    """
     logger.info("=" * 60)
     logger.info(f"[bold green] Local AI Job Agent Dashboard Running at: http://localhost:{port}[/bold green]")
     logger.info(f"[bold cyan] Mobile Phone Access (Same Wi-Fi): http://192.168.31.87:{port}[/bold cyan]")
@@ -2508,6 +2504,105 @@ def run_dashboard_server(host: str = "0.0.0.0", port: int = 8000):
 
     threading.Thread(target=_startup_scout, daemon=True).start()
 
+    # ── Try Uvicorn + FastAPI ASGI bridge first (production) ─────────────────
+    try:
+        import uvicorn
+        from fastapi import FastAPI, Request
+        from fastapi.responses import Response
+        import asyncio
+
+        fastapi_app = FastAPI(title="AI Job Agent", docs_url=None, redoc_url=None)
+
+        @fastapi_app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+        async def asgi_bridge(request: Request, full_path: str):
+            """ASGI bridge: delegates every request to AgentDashboardHandler logic."""
+            import io
+            body = await request.body()
+
+            response_status = [200]
+            response_headers = {}
+            response_body = io.BytesIO()
+
+            class _FakeSocket:
+                def makefile(self, *a, **kw): return io.BytesIO()
+                def sendall(self, data): pass
+                def recv(self, *a): return b""
+
+            class _FakeWfile:
+                def write(self, data):
+                    response_body.write(data)
+                def flush(self): pass
+
+            class _BridgedHandler(AgentDashboardHandler):
+                def __init__(self):
+                    self.request = _FakeSocket()
+                    self.client_address = (request.client.host if request.client else "127.0.0.1", 0)
+                    self.server = None
+                    self.wfile = _FakeWfile()
+                    self.rfile = io.BytesIO(body)
+                    self._headers_sent = False
+                    self._status_code = 200
+                    self._response_headers = {}
+                    self._body = io.BytesIO()
+                    self.close_connection = True
+                    self.requestline = f"{request.method} /{full_path} HTTP/1.1"
+                    self.command = request.method
+                    self.path = "/" + full_path + (f"?{request.url.query}" if request.url.query else "")
+                    self.headers = {k: v for k, v in request.headers.items()}
+
+                def send_response(self, code, message=None):
+                    response_status[0] = code
+
+                def send_header(self, key, value):
+                    response_headers[key] = value
+
+                def end_headers(self):
+                    pass
+
+                def log_message(self, format, *args):
+                    pass
+
+            try:
+                handler = _BridgedHandler()
+                if request.method == "GET":
+                    handler.do_GET()
+                elif request.method == "POST":
+                    handler.do_POST()
+                else:
+                    handler.do_GET()
+            except Exception as handler_err:
+                logger.debug(f"ASGI bridge handler notice: {handler_err}")
+
+            body_bytes = response_body.getvalue()
+            return Response(
+                content=body_bytes,
+                status_code=response_status[0],
+                headers=response_headers
+            )
+
+        logger.info("🚀 Starting Uvicorn ASGI server (production mode)...")
+        uvicorn.run(
+            fastapi_app,
+            host=host,
+            port=port,
+            log_level="warning",
+            access_log=False,
+            workers=1,          # Single worker — shares in-memory state (SSE, scheduler)
+            loop="asyncio",
+        )
+        return
+    except ImportError:
+        logger.info("Uvicorn not available — using classic ThreadedHTTPServer.")
+    except Exception as uv_err:
+        logger.warning(f"Uvicorn startup notice: {uv_err} — falling back to ThreadedHTTPServer.")
+
+    # ── Fallback: classic ThreadedHTTPServer ──────────────────────────────────
+    class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
+        daemon_threads = True
+        def handle_error(self, request, client_address):
+            pass
+
+    server = ThreadedHTTPServer((host, port), AgentDashboardHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

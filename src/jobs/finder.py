@@ -249,8 +249,8 @@ class JobFinder:
                 for q in query_variants
             ]
 
-            # Parallel scraping across all source adapters × all query variants (memory-optimized: 4 workers)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            # Parallel scraping across all source adapters × all query variants (12 workers)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
                 futures = [executor.submit(_fetch_from_adapter, ad, q) for ad, q in fetch_tasks]
                 for future in concurrent.futures.as_completed(futures):
                     try:
