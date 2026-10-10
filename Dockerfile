@@ -34,9 +34,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python requirements
+# Install Python requirements (install CPU-only PyTorch first to avoid ~2GB of CUDA GPU binaries)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -U pip setuptools wheel \
+    && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright Chromium & system browser dependencies for headless automation
