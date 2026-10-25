@@ -1,0 +1,31 @@
+name: 🔥 Azure Keepalive — Prevent Cold Starts
+
+# Pings the Azure App Service health endpoint every 10 minutes.
+# Prevents Azure from spinning down the container due to inactivity,
+# which causes the 15-30 second "black screen" cold start on first visit.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # Every 10 minutes, 24/7
+  workflow_dispatch:           # Allow manual trigger
+
+jobs:
+  keepalive:
+    name: 🏓 Ping Azure Health Endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: 🔥 Ping Azure App Service
+        run: |
+          echo "Pinging Azure App Service to prevent cold start..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 30 \
+            --connect-timeout 10 \
+            "https://sasi-job-agent-cbbda5asd4g4brb2.eastasia-01.azurewebsites.net/health")
+          echo "Azure health check returned HTTP $STATUS"
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ App is alive and warm!"
+          else
+            echo "⚠️  App returned HTTP $STATUS (may be waking up)"
+          fi

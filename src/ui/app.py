@@ -1573,6 +1573,10 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             history = []
             try:
                 cursor = conn.cursor()
+                # Use LATERAL joins instead of correlated subqueries to avoid N+1 query pattern.
+                # Old query ran 2×N sub-queries (one per job per table) = 2112 queries for 1056 jobs.
+                # LATERAL runs each sub-select once as a set join → single fast query.
+                # LIMIT 200: returns top 200 highest-scored jobs (browser was choking on 1056 DOM nodes).
                 cursor.execute(
                     """
                     SELECT j.id,
@@ -1586,14 +1590,23 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
                            rv.file_path,
                            COALESCE(j.location, 'Bengaluru') AS location
                     FROM jobs j
-                    LEFT JOIN applications a ON a.id = (
-                        SELECT id FROM applications WHERE job_id = j.id ORDER BY id DESC LIMIT 1
-                    )
-                    LEFT JOIN job_matches jm ON jm.id = (
-                        SELECT id FROM job_matches WHERE job_id = j.id ORDER BY overall_score DESC, id DESC LIMIT 1
-                    )
-                    LEFT JOIN resume_versions rv ON a.resume_version_id = rv.id
+                    LEFT JOIN LATERAL (
+                        SELECT id, status, resume_version_id
+                        FROM applications
+                        WHERE job_id = j.id
+                        ORDER BY id DESC
+                        LIMIT 1
+                    ) a ON true
+                    LEFT JOIN LATERAL (
+                        SELECT id, overall_score, decision
+                        FROM job_matches
+                        WHERE job_id = j.id
+                        ORDER BY overall_score DESC, id DESC
+                        LIMIT 1
+                    ) jm ON true
+                    LEFT JOIN resume_versions rv ON rv.id = a.resume_version_id
                     ORDER BY COALESCE(jm.overall_score, 0) DESC, j.id DESC
+                    LIMIT 200
                     """
                 )
                 rows = cursor.fetchall()
@@ -2442,9 +2455,19 @@ class AgentDashboardHandler(BaseHTTPRequestHandler):
             payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
             self.send_response(status_code)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
+            # Gzip compress large JSON payloads (e.g. 1056-job list: ~400KB → ~40KB)
+            accept_enc = self.headers.get("Accept-Encoding", "") if hasattr(self.headers, "get") else str(self.headers)
+            if "gzip" in accept_enc and len(payload) > 1024:
+                import gzip as _gzip
+                compressed = _gzip.compress(payload, compresslevel=6)
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Content-Length", str(len(compressed)))
+                self.end_headers()
+                self.wfile.write(compressed)
+            else:
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
             pass
 
