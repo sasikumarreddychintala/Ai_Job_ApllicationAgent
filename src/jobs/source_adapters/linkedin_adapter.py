@@ -1,4 +1,6 @@
 import re
+import time
+import random
 import urllib.request
 import urllib.parse
 from typing import List
@@ -28,7 +30,10 @@ class LinkedInJobAdapter(BaseJobAdapter):
         results: List[RawJobListing] = []
 
         # Paginate first 2 pages (0, 25)
-        for page_start in [0, 25]:
+        for i, page_start in enumerate([0, 25]):
+            # Jitter between pages: 0.5–1.5 s — reduces 429 rate-limit hits
+            if i > 0:
+                time.sleep(random.uniform(0.5, 1.5))
             url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={encoded_q}&location={encoded_loc}&f_TPR={tpr_code}&start={page_start}"
             req = urllib.request.Request(
                 url,

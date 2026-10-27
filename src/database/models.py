@@ -470,6 +470,25 @@ def init_db(db_path: Path = settings.DATABASE_PATH):
                             except Exception as mig_err2:
                                 raw_conn.rollback()
                                 logger.warning(f"⚠️ resume_versions pdf_data migration notice (non-fatal): {mig_err2}")
+                            # -- Live migration: performance indexes for LATERAL join queries --
+                            try:
+                                cur.execute(
+                                    'CREATE INDEX IF NOT EXISTS idx_applications_job_id ON applications(job_id, id DESC);'
+                                )
+                            except Exception:
+                                raw_conn.rollback()
+                            try:
+                                cur.execute(
+                                    'CREATE INDEX IF NOT EXISTS idx_job_matches_job_score ON job_matches(job_id, overall_score DESC);'
+                                )
+                            except Exception:
+                                raw_conn.rollback()
+                            try:
+                                cur.execute(
+                                    'CREATE INDEX IF NOT EXISTS idx_jobs_discovered_at ON jobs(discovered_at DESC);'
+                                )
+                            except Exception:
+                                raw_conn.rollback()
                         raw_conn.commit()
                         logger.info("🟢 Supabase PostgreSQL connected — schema ready!")
                         _DB_INITIALIZED = True
